@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
-# Stops the services started by run-mode0.sh.
+# Stops the services started by run-demo.sh (leaves the Person Server running;
+# use stop-person-server.sh for that).
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-pid_file="${repo_root}/.mode0-pids"
+pid_file="${repo_root}/.demo-pids"
 
 if [[ ! -f ${pid_file} ]]; then
   echo "Nothing to stop: ${pid_file} not found."

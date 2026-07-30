@@ -21,7 +21,8 @@ import org.springframework.test.context.TestPropertySource;
  * resolving to 127.0.0.1) matches what clients sign.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.DEFINED_PORT)
-@TestPropertySource(properties = {"server.port=19998", "demo.agent-url=http://gateway.uma.lab:19998/"})
+@TestPropertySource(
+        properties = {"server.port=19998", "demo.agent-url=http://gateway.uma.lab:19998/", "demo.aauth.mode=hwk"})
 class MarketAnalysisAgentApiTest {
 
     private static final URI BASE = URI.create("http://gateway.uma.lab:19998/");
@@ -41,7 +42,7 @@ class MarketAnalysisAgentApiTest {
 
         assertThat(response.statusCode()).isEqualTo(401);
         assertThat(response.headers().firstValue("Accept-Signature")).isPresent();
-        assertThat(response.body()).contains("invalid_signature");
+        assertThat(response.body()).contains("unauthorized");
     }
 
     @Test

@@ -1,10 +1,19 @@
 package io.github.marcofanti.aauth.demo.backend.config;
 
+import io.github.marcofanti.aauth.demo.a2a.A2aClient;
 import io.github.marcofanti.aauth.demo.a2a.RequestSigner;
+import io.github.marcofanti.aauth.demo.backend.optimization.SupplyChainGateway;
+import io.github.marcofanti.aauth.demo.common.A2aAuthClient;
 import io.github.marcofanti.aauth.demo.common.AAuthClientSigner;
+import io.github.marcofanti.aauth.demo.common.AgentBootstrap;
+import java.net.URI;
+import java.nio.file.Path;
+import java.time.Duration;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.web.servlet.config.annotation.CorsRegistry;
@@ -13,10 +22,35 @@ import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 @Configuration
 public class BackendConfig {
 
-    /** Signs the backend's outbound A2A calls (to the supply-chain agent). */
+    /** Registers with the Person Server at startup; only in {@code jwt} mode. */
     @Bean
-    public RequestSigner outboundSigner(@Value("${demo.aauth.mode:hwk}") String mode) {
-        return "hwk".equals(mode) ? AAuthClientSigner.ephemeral() : RequestSigner.none();
+    @ConditionalOnProperty(name = "demo.aauth.mode", havingValue = "jwt")
+    public AgentBootstrap.Identity agentIdentity(
+            @Value("${demo.person-server-url:http://ps.uma.lab:8765}") String personServerUrl,
+            @Value("${demo.aauth.key-dir:.aauth-demo}") String keyDirectory,
+            @Value("${spring.application.name}") String agentName) {
+        return AgentBootstrap.register(new AgentBootstrap.Config(
+                URI.create(personServerUrl), Path.of(keyDirectory), agentName, Duration.ofMinutes(2)));
+    }
+
+    /**
+     * Gateway to the supply-chain agent. In {@code jwt} mode this is the exchange-capable
+     * client (identity signing, 401 → resource token → Person Server exchange, consent-aware);
+     * lower modes sign pseudonymously or not at all.
+     */
+    @Bean
+    public SupplyChainGateway supplyChainGateway(
+            @Value("${demo.supply-chain-url:http://gateway.uma.lab:9999/}") String supplyChainUrl,
+            @Value("${demo.aauth.mode:hwk}") String mode,
+            ObjectProvider<AgentBootstrap.Identity> identity) {
+        URI endpoint = URI.create(supplyChainUrl);
+        if ("jwt".equals(mode)) {
+            A2aAuthClient client = new A2aAuthClient(endpoint, identity.getObject());
+            return client::sendText;
+        }
+        RequestSigner signer = "hwk".equals(mode) ? AAuthClientSigner.ephemeral() : RequestSigner.none();
+        A2aClient plain = new A2aClient(signer);
+        return (prompt, onInteraction) -> plain.sendText(endpoint, prompt);
     }
 
     /** Background executor for optimization runs; each run may block for minutes on user consent. */

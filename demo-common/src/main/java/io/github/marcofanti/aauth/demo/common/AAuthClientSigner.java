@@ -8,28 +8,37 @@ import java.security.KeyPair;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Supplier;
 
 /**
- * AAuth HWK signer behind the demo's {@link RequestSigner} seam: RFC 9421 HTTP Message
- * Signatures with the Ed25519 public key embedded in {@code Signature-Key} (pseudonymous).
- * The signature covers {@code @method @authority @path signature-key content-digest
- * content-type}, so the body bytes are tamper-evident.
+ * AAuth signer behind the demo's {@link RequestSigner} seam: RFC 9421 HTTP Message Signatures
+ * covering {@code @method @authority @path signature-key content-digest content-type}.
  *
- * <p>The key pair is ephemeral per process, mirroring the reference demo's ephemeral signing
- * keys. The {@code jwt} scheme (agent/auth tokens from the Person Server) replaces this in
- * demo phases 4–6.
+ * <p>Two flavors: {@link #ephemeral()} signs pseudonymously ({@code hwk}, public key embedded
+ * in {@code Signature-Key}); {@link #withAgentToken} signs with identity ({@code jwt}, carrying
+ * the {@code aa-agent+jwt} whose {@code cnf.jwk} binds the same ephemeral key).
  */
 public final class AAuthClientSigner implements io.github.marcofanti.aauth.demo.a2a.RequestSigner {
 
     private final KeyPair keyPair;
+    private final Supplier<SignatureScheme> scheme;
 
-    public AAuthClientSigner(KeyPair keyPair) {
+    private AAuthClientSigner(KeyPair keyPair, Supplier<SignatureScheme> scheme) {
         this.keyPair = keyPair;
+        this.scheme = scheme;
     }
 
-    /** New signer with a fresh per-process Ed25519 key pair. */
+    /** Pseudonymous signer with a fresh per-process Ed25519 key pair. */
     public static AAuthClientSigner ephemeral() {
-        return new AAuthClientSigner(KeyPairs.generateEd25519());
+        return new AAuthClientSigner(KeyPairs.generateEd25519(), SignatureScheme.Hwk::new);
+    }
+
+    /**
+     * Identity signer: the ephemeral key from bootstrap plus a token bound to it via
+     * {@code cnf.jwk} — either the {@code aa-agent+jwt} or an exchanged {@code aa-auth+jwt}.
+     */
+    public static AAuthClientSigner withToken(KeyPair ephemeralKeyPair, String token) {
+        return new AAuthClientSigner(ephemeralKeyPair, () -> new SignatureScheme.Jwt(token));
     }
 
     @Override
@@ -39,7 +48,7 @@ public final class AAuthClientSigner implements io.github.marcofanti.aauth.demo.
                         .headers(headers)
                         .body(body)
                         .keyPair(keyPair)
-                        .scheme(new SignatureScheme.Hwk())
+                        .scheme(scheme.get())
                         .additionalComponents(List.of("content-digest", "content-type"))
                         .build());
         Map<String, String> merged = new LinkedHashMap<>(headers);

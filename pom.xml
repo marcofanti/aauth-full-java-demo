@@ -12,12 +12,20 @@
   <name>AAuth Java Demo (parent)</name>
   <description>Multi-agent AAuth demo: backend, supply-chain agent, market-analysis agent</description>
 
+  <licenses>
+    <license>
+      <name>MIT License</name>
+      <url>https://opensource.org/licenses/MIT</url>
+    </license>
+  </licenses>
+
   <modules>
     <module>a2a-support</module>
     <module>demo-common</module>
     <module>market-analysis-agent</module>
     <module>supply-chain-agent</module>
     <module>backend</module>
+    <module>integration-tests</module>
   </modules>
 
   <properties>

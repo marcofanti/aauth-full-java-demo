@@ -24,7 +24,8 @@ import org.springframework.test.context.TestPropertySource;
         properties = {
             "server.port=19999",
             "demo.agent-url=http://gateway.uma.lab:19999/",
-            "demo.market-analysis-url=http://127.0.0.1:1/"
+            "demo.market-analysis-url=http://127.0.0.1:1/",
+            "demo.aauth.mode=hwk"
         })
 class SupplyChainAgentApiTest {
 

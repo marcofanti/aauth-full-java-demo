@@ -10,22 +10,21 @@
     <version>0.1.0-SNAPSHOT</version>
   </parent>
 
-  <artifactId>demo-common</artifactId>
-  <name>Demo common</name>
-  <description>Adaptation layer between the demo's A2A seams and the aauth-java-library</description>
+  <artifactId>integration-tests</artifactId>
+  <name>Integration tests</name>
+  <description>End-to-end suites against live services; run via scripts/run-tests.sh, skipped in normal builds</description>
+
+  <properties>
+    <!-- These tests need live services (scripts/run-demo.sh); normal builds skip them. -->
+    <skipITs>true</skipITs>
+    <it.groups></it.groups>
+  </properties>
 
   <dependencies>
     <dependency>
       <groupId>io.github.marcofanti</groupId>
-      <artifactId>a2a-support</artifactId>
-    </dependency>
-    <dependency>
-      <groupId>io.github.marcofanti</groupId>
-      <artifactId>aauth</artifactId>
-    </dependency>
-    <dependency>
-      <groupId>org.slf4j</groupId>
-      <artifactId>slf4j-api</artifactId>
+      <artifactId>demo-common</artifactId>
+      <scope>test</scope>
     </dependency>
     <dependency>
       <groupId>org.junit.jupiter</groupId>
@@ -43,4 +42,20 @@
       <scope>test</scope>
     </dependency>
   </dependencies>
+
+  <build>
+    <plugins>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-surefire-plugin</artifactId>
+        <configuration>
+          <skipTests>${skipITs}</skipTests>
+          <groups>${it.groups}</groups>
+          <includes>
+            <include>**/*IT.java</include>
+          </includes>
+        </configuration>
+      </plugin>
+    </plugins>
+  </build>
 </project>

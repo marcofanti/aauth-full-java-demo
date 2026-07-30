@@ -37,6 +37,19 @@ public record OptimizationRecord(
                 at);
     }
 
+    public OptimizationRecord interactionRequired(String url, String code) {
+        return new OptimizationRecord(
+                requestId,
+                prompt,
+                OptimizationStatus.INTERACTION_REQUIRED,
+                report,
+                error,
+                url,
+                code,
+                createdAt,
+                completedAt);
+    }
+
     public OptimizationRecord failed(String errorMessage) {
         return new OptimizationRecord(
                 requestId,

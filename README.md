@@ -7,15 +7,52 @@ Signatures via the [aauth-java-library](../aauth-java-library).
 
 Design and phase plan: [docs/PLAN.md](docs/PLAN.md) · status: [docs/PROGRESS.md](docs/PROGRESS.md)
 
-## Current state: HWK-signed, in-process verification
+## Current state: full AAuth flows (identity, auth tokens, user consent)
 
-Phases 0, 1 and 3 are complete. Both A2A hops are signed with the AAuth `hwk` scheme
-(pseudonymous Ed25519, per-process ephemeral keys, signature covering
-`@method @authority @path signature-key content-digest content-type`) and verified
-in-process by the receiving agent — unsigned or tampered requests get a 401 with an
-`Accept-Signature` challenge. Set `demo.aauth.mode=off` per service to fall back to
-plain HTTP. The gateway/Person-Server modes (identity, auth tokens, user consent)
-arrive in phases 2 and 4–6.
+Phases 0, 1 and 3–6 are complete. At startup the backend and supply-chain agent
+register with the local [aauth-person-server](../aauth-person-server) (stable Ed25519
+key persisted in `.aauth-demo/`, `hwk`-signed registration, human/API approval, then an
+`aa-agent+jwt` bound to a per-process ephemeral key). Every A2A hop is signed with
+`scheme=jwt` and verified in-process; unsigned or tampered requests get a 401 challenge.
+
+Run modes (`./scripts/run-demo.sh <mode>`):
+
+| Mode | Behavior |
+|---|---|
+| `off` | Plain HTTP |
+| `hwk` | Pseudonymous RFC 9421 signing (no Person Server) |
+| `jwt` | Agent identity: `aa-agent+jwt`, verifiers require identity |
+| `auth-token` | Agents demand `aa-auth+jwt`: 401 + resource token → autonomous Person Server exchange → retry |
+| `consent` *(default demo)* | Like `auth-token`, but the supply-chain agent requires `require:user`: the Person Server defers until the user approves in the consent popup surfaced by the UI |
+
+Mode semantics: [docs/MODES.md](docs/MODES.md) · consent sequence:
+[docs/CONSENT_FLOW.md](docs/CONSENT_FLOW.md)
+
+Still to come: the agentgateway edge (rest of phase 2) and `jkt-jwt` token refresh.
+
+## Integration tests
+
+```bash
+./scripts/run-tests.sh all        # cycles every mode: start services -> tagged suites -> stop
+./scripts/run-tests.sh consent    # a single mode
+```
+
+The `integration-tests` module is skipped in normal `mvn verify` builds (it needs live
+services); the script enables it with the tag groups matching each mode, including the
+consent approval/denial flows driven through the Person Server's REST API.
+
+## Tracing
+
+```bash
+./scripts/setup-tracing.sh      # one-time: OTel Java agent + Jaeger binary into tools/
+./scripts/run-jaeger.sh         # collector + UI on http://127.0.0.1:16686
+./scripts/run-demo.sh consent   # tracing turns on automatically when tools/ is populated
+```
+
+Run an optimization, then open Jaeger and select the `backend` service: one trace spans
+all three services and shows the AAuth choreography — the 401 challenges, Person Server
+exchanges, and the consent wait. The Person Server itself is not instrumented (Python),
+so its endpoints appear as client spans only. Stop with `./scripts/stop-jaeger.sh`.
 
 ```
 Browser (portal.uma.lab:3050) ──REST──► backend portal.uma.lab:8000
@@ -37,11 +74,16 @@ observability (phase 7).
 ```bash
 mvn clean verify                # all modules: tests, coverage gate, Spotless, -Werror
 mvn -DskipTests package         # just the runnable jars
-./scripts/run-mode0.sh          # starts the three services, health-checked
+./scripts/run-demo.sh consent   # full flow: Person Server, registration + auto-approval,
+                                # auth tokens, user consent on the supply-chain hop
+./scripts/run-demo.sh jwt       # identity only (default when no mode given)
+./scripts/run-demo.sh hwk       # pseudonymous signing only (no Person Server)
 cd supply-chain-ui && npm install && npm run dev   # UI on http://portal.uma.lab:3050
 ```
 
-Stop everything with `./scripts/stop-mode0.sh`.
+Stop with `./scripts/stop-demo.sh` (and `./scripts/stop-person-server.sh`). The Person
+Server is the sibling `../aauth-person-server` checkout, run unmodified with uma.lab
+origins; its consent/admin UI is at `http://ps.uma.lab:8765/ui` (token `mytoken`).
 
 ## Try it
 
@@ -77,3 +119,7 @@ curl -s http://portal.uma.lab:8000/optimization/results/<requestId>
 The `message/send` request body is serialized exactly once (`A2aJson`) and those bytes are
 what the `RequestSigner` sees and what goes on the wire — the prerequisite for RFC 9421
 signing landing cleanly in phase 4.
+
+## License
+
+MIT — see [LICENSE](LICENSE).

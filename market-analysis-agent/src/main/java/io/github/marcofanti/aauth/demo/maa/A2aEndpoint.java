@@ -9,11 +9,14 @@ import io.github.marcofanti.aauth.demo.a2a.JsonRpcError;
 import io.github.marcofanti.aauth.demo.a2a.JsonRpcRequest;
 import io.github.marcofanti.aauth.demo.a2a.JsonRpcResponse;
 import io.github.marcofanti.aauth.demo.common.AAuthInboundVerifier;
+import io.github.marcofanti.aauth.resource.ChallengeBuilder;
 import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
@@ -33,6 +36,8 @@ import org.springframework.web.bind.annotation.RestController;
 @RestController
 public class A2aEndpoint {
 
+    private static final Logger log = LoggerFactory.getLogger(A2aEndpoint.class);
+
     private final MarketAnalyzer analyzer;
     private final AgentCard card;
     private final AAuthInboundVerifier verifier;
@@ -50,11 +55,21 @@ public class A2aEndpoint {
     public ResponseEntity<String> handleJsonRpc(@RequestBody byte[] body, @RequestHeader Map<String, String> headers) {
         if (verifier != null) {
             AAuthInboundVerifier.Verification verification = verifier.verify("POST", "/", headers, body);
-            if (!verification.valid()) {
-                var challenge = verifier.challenge();
-                return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
-                        .header(challenge.headerName(), challenge.headerValue())
-                        .body(A2aJson.toJson(Map.of("error", "invalid_signature", "detail", verification.error())));
+            switch (verification.status()) {
+                case INVALID -> {
+                    log.warn("Rejected A2A request: {}", verification.error());
+                    return unauthorized(verifier.challenge(), verification.error());
+                }
+                case NEEDS_AUTH_TOKEN -> {
+                    log.info("Caller {} needs an auth token; issuing resource-token challenge", verification.agentId());
+                    return unauthorized(
+                            verifier.authTokenChallenge(headers, verification.agentId()), verification.error());
+                }
+                case VALID ->
+                    log.info(
+                            "A2A request verified: agent={} scopes={}",
+                            verification.agentId() == null ? "(pseudonymous)" : verification.agentId(),
+                            verification.scopes());
             }
         }
         return ResponseEntity.ok(dispatch(new String(body, StandardCharsets.UTF_8)));
@@ -78,6 +93,24 @@ public class A2aEndpoint {
         String report = analyzer.analyze(text);
         return A2aJson.toJson(JsonRpcResponse.success(
                 request.id(), A2aMessage.agentText(UUID.randomUUID().toString(), report)));
+    }
+
+    private static ResponseEntity<String> unauthorized(ChallengeBuilder.Challenge challenge, String detail) {
+        return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                .header(challenge.headerName(), challenge.headerValue())
+                .body(A2aJson.toJson(Map.of("error", "unauthorized", "detail", detail)));
+    }
+
+    @GetMapping(value = "/.well-known/aauth-resource.json", produces = MediaType.APPLICATION_JSON_VALUE)
+    public ResponseEntity<String> resourceMetadata() {
+        return verifier == null
+                ? ResponseEntity.notFound().build()
+                : ResponseEntity.ok(verifier.resourceMetadataJson());
+    }
+
+    @GetMapping(value = "/.well-known/jwks.json", produces = MediaType.APPLICATION_JSON_VALUE)
+    public ResponseEntity<String> resourceJwks() {
+        return verifier == null ? ResponseEntity.notFound().build() : ResponseEntity.ok(verifier.resourceJwksJson());
     }
 
     @GetMapping(value = AgentCard.WELL_KNOWN_PATH, produces = MediaType.APPLICATION_JSON_VALUE)

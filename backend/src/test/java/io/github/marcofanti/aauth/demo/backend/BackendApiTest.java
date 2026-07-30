@@ -17,6 +17,7 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Primary;
 
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
+@org.springframework.test.context.TestPropertySource(properties = "demo.aauth.mode=off")
 class BackendApiTest {
 
     @TestConfiguration
@@ -24,7 +25,7 @@ class BackendApiTest {
         @Bean
         @Primary
         SupplyChainGateway stubSupplyChainGateway() {
-            return prompt -> "# Supply Chain Optimization Report\n\nstubbed for: " + prompt;
+            return (prompt, onInteraction) -> "# Supply Chain Optimization Report\n\nstubbed for: " + prompt;
         }
     }
 

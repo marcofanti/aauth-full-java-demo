@@ -48,8 +48,8 @@ class OptimizationServiceTest {
 
     @Test
     void successfulRunCompletesWithReport() {
-        OptimizationService service =
-                new OptimizationService(prompt -> "# Report for " + prompt, activities, directExecutor);
+        OptimizationService service = new OptimizationService(
+                (prompt, onInteraction) -> "# Report for " + prompt, activities, directExecutor);
 
         String requestId = service.start("optimize laptops");
 
@@ -63,7 +63,7 @@ class OptimizationServiceTest {
     @Test
     void gatewayFailureEndsInFailedWithError() {
         OptimizationService service = new OptimizationService(
-                prompt -> {
+                (prompt, onInteraction) -> {
                     throw new A2aClientException("agent unreachable");
                 },
                 activities,
@@ -79,7 +79,8 @@ class OptimizationServiceTest {
 
     @Test
     void blankPromptFallsBackToDefault() {
-        OptimizationService service = new OptimizationService(prompt -> prompt, activities, directExecutor);
+        OptimizationService service =
+                new OptimizationService((prompt, onInteraction) -> prompt, activities, directExecutor);
 
         String requestId = service.start("  ");
 
@@ -88,14 +89,16 @@ class OptimizationServiceTest {
 
     @Test
     void unknownRequestIdIsEmpty() {
-        OptimizationService service = new OptimizationService(prompt -> prompt, activities, directExecutor);
+        OptimizationService service =
+                new OptimizationService((prompt, onInteraction) -> prompt, activities, directExecutor);
 
         assertThat(service.get("nope")).isEmpty();
     }
 
     @Test
     void allListsNewestFirstAndClearEmpties() {
-        OptimizationService service = new OptimizationService(prompt -> prompt, activities, directExecutor);
+        OptimizationService service =
+                new OptimizationService((prompt, onInteraction) -> prompt, activities, directExecutor);
         service.start("first");
         service.start("second");
 
@@ -108,7 +111,8 @@ class OptimizationServiceTest {
 
     @Test
     void activitiesAreRecordedForRuns() {
-        OptimizationService service = new OptimizationService(prompt -> "ok", activities, directExecutor);
+        OptimizationService service =
+                new OptimizationService((prompt, onInteraction) -> "ok", activities, directExecutor);
 
         service.start("optimize laptops");
 

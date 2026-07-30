@@ -66,7 +66,10 @@ public class OptimizationService {
         update(requestId, record -> record.withStatus(OptimizationStatus.RUNNING));
         activities.record("backend", "Delegating to supply-chain-agent");
         try {
-            String report = gateway.optimize(prompt);
+            String report = gateway.optimize(prompt, (url, code) -> {
+                update(requestId, record -> record.interactionRequired(url, code));
+                activities.record("backend", "User consent required (code " + code + ")");
+            });
             update(requestId, record -> record.completed(report, Instant.now()));
             activities.record("supply-chain-agent", "Optimization completed");
         } catch (Exception e) {
