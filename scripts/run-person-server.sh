@@ -23,8 +23,10 @@ fi
 export AAUTH_DATABASE_URL="sqlite:///${ps_repo}/aauth.db"
 export AAUTH_PS_SIGNING_KEY_PATH="${ps_repo}/.aauth/ps-signing-key.pem"
 export AAUTH_AS_SIGNING_KEY_PATH="${ps_repo}/.aauth/as-signing-key.pem"
-export AAUTH_PS_PUBLIC_ORIGIN="http://ps.uma.lab:8765"
-export AAUTH_AS_PUBLIC_ORIGIN="http://ps.uma.lab:8765"
+# Edge modes need a local-development origin (the Go verifier rejects http://ps.uma.lab
+# issuers); run-demo.sh overrides this to http://127.0.0.1:8765 for them.
+export AAUTH_PS_PUBLIC_ORIGIN="${AAUTH_PS_PUBLIC_ORIGIN:-http://ps.uma.lab:8765}"
+export AAUTH_AS_PUBLIC_ORIGIN="${AAUTH_AS_PUBLIC_ORIGIN:-${AAUTH_PS_PUBLIC_ORIGIN}}"
 export AAUTH_PS_ADMIN_TOKEN="mytoken"
 export AAUTH_AS_PERSON_TOKEN="mytoken"
 export AAUTH_PS_INSECURE_DEV="false"

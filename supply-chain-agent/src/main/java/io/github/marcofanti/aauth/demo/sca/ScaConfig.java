@@ -25,11 +25,11 @@ public class ScaConfig {
 
     private static final Logger log = LoggerFactory.getLogger(ScaConfig.class);
 
-    private static final Set<String> IDENTITY_MODES = Set.of("jwt", "auth-token", "consent");
+    private static final Set<String> IDENTITY_MODES = Set.of("jwt", "auth-token", "consent", "edge");
 
     /** Registers with the Person Server at startup in every identity-carrying mode. */
     @Bean
-    @ConditionalOnExpression("'${demo.aauth.mode:hwk}'.matches('jwt|auth-token|consent')")
+    @ConditionalOnExpression("'${demo.aauth.mode:hwk}'.matches('jwt|auth-token|consent|edge')")
     public ManagedIdentity agentIdentity(
             @Value("${demo.person-server-url:http://ps.uma.lab:8765}") String personServerUrl,
             @Value("${demo.aauth.key-dir:.aauth-demo}") String keyDirectory,
@@ -63,7 +63,7 @@ public class ScaConfig {
 
     /** Inbound AAuth verification; absent when {@code demo.aauth.mode=off}. */
     @Bean
-    @ConditionalOnExpression("!'${demo.aauth.mode:hwk}'.equals('off')")
+    @ConditionalOnExpression("'${demo.aauth.mode:hwk}'.matches('hwk|jwt|auth-token|consent')")
     public AAuthInboundVerifier inboundVerifier(
             @Value("${demo.agent-url:http://gateway.uma.lab:9999/}") String agentUrl,
             @Value("${demo.aauth.mode:hwk}") String mode,

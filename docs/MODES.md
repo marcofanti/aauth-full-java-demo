@@ -11,6 +11,9 @@ requirement; the backend only ever needs identity:
 | `jwt` | jwt | jwt | jwt | required |
 | `auth-token` | jwt | auth-token | auth-token | required |
 | `consent` | jwt | consent | auth-token | required |
+| `edge` | jwt | edge | edge | required (127.0.0.1 origin) |
+| `edge-auth` | jwt | edge | edge | required (127.0.0.1 origin) |
+| `edge-consent` | jwt | edge | edge | required (127.0.0.1 origin) |
 
 Per-service semantics of `demo.aauth.mode`:
 
@@ -21,7 +24,9 @@ Per-service semantics of `demo.aauth.mode`:
 - **jwt** — the service registers with the Person Server at startup (stable key +
   ephemeral key, `hwk`-signed `POST /register`, human or `/person`-API approval) and
   signs with `scheme=jwt` carrying its `aa-agent+jwt`. Verifiers require identity and
-  resolve the issuer's keys via JWKS discovery.
+  resolve the issuer's keys via JWKS discovery. The token auto-renews before expiry
+  via `jkt-jwt` refresh (`ManagedIdentity`); cached auth tokens are dropped on
+  rotation.
 - **auth-token** — inbound requests must additionally carry an `aa-auth+jwt` with
   scopes. Identified callers without one get
   `401` + `AAuth-Requirement: requirement=auth-token, resource-token="…"`; the caller
@@ -35,6 +40,14 @@ Per-service semantics of `demo.aauth.mode`:
 Auth tokens are cached per client process for their lifetime — after one approval,
 subsequent runs complete without a new consent prompt until the token expires or the
 service restarts.
+
+- **edge** (per-service) — outbound identity signing stays on, in-process verification
+  is off: the agentgateway routes gateway.uma.lab:9999/:9998 through the aauth-service
+  (gRPC ExtAuthz), which enforces the level selected by the run mode's
+  `gateway/aauth-config-*.yaml` variant (identity / auth-token / consent) and issues
+  the 401 challenges and resource tokens itself. Edge modes run the Person Server on
+  origin `http://127.0.0.1:8765` — the Go verifier only accepts http issuers for
+  local-development hosts.
 
 Testing: `./scripts/run-tests.sh [mode|all]` starts the services per mode and runs the
 matching tag groups from the `integration-tests` module (`core`, `signed`, `ps`,

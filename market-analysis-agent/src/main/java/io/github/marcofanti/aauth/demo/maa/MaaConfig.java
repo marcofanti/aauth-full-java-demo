@@ -18,7 +18,7 @@ public class MaaConfig {
 
     /** Inbound AAuth verification; absent when {@code demo.aauth.mode=off}. */
     @Bean
-    @ConditionalOnExpression("!'${demo.aauth.mode:hwk}'.equals('off')")
+    @ConditionalOnExpression("'${demo.aauth.mode:hwk}'.matches('hwk|jwt|auth-token|consent')")
     public AAuthInboundVerifier inboundVerifier(
             @Value("${demo.agent-url:http://gateway.uma.lab:9998/}") String agentUrl,
             @Value("${demo.aauth.mode:hwk}") String mode,

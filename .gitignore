@@ -11,3 +11,4 @@ dist/
 .DS_Store
 .aauth-demo/
 tools/
+runlocal.sh

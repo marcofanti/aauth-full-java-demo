@@ -8,6 +8,9 @@
 #         resource token at the Person Server autonomously
 #   consent — like auth-token, but the supply-chain agent's resource token carries
 #         require:user, so the Person Server defers until a human approves
+#   edge / edge-auth / edge-consent — same three levels, but enforced at the
+#         agentgateway + aauth-service edge (scripts/setup-gateway.sh); agents run
+#         behind the gateway with in-process verification off
 # Pending registrations are auto-approved via the Person Server's /person API.
 # Requires jars built via: mvn -DskipTests package
 set -euo pipefail
@@ -25,11 +28,28 @@ auth-token)
 consent)
   backend_mode="jwt" sca_mode="consent" maa_mode="auth-token"
   ;;
+edge)
+  backend_mode="jwt" sca_mode="edge" maa_mode="edge" edge_variant="identity"
+  ;;
+edge-auth)
+  backend_mode="jwt" sca_mode="edge" maa_mode="edge" edge_variant="auth-token"
+  ;;
+edge-consent)
+  backend_mode="jwt" sca_mode="edge" maa_mode="edge" edge_variant="consent"
+  ;;
 *)
-  echo "Usage: $0 [off|hwk|jwt|auth-token|consent]" >&2
+  echo "Usage: $0 [off|hwk|jwt|auth-token|consent|edge|edge-auth|edge-consent]" >&2
   exit 1
   ;;
 esac
+
+edge_variant="${edge_variant:-}"
+# Edge modes require a local-dev Person Server origin (Go verifier issuer rules).
+if [[ -n ${edge_variant} ]]; then
+  ps_origin="http://127.0.0.1:8765"
+else
+  ps_origin="http://ps.uma.lab:8765"
+fi
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 pid_file="${repo_root}/.demo-pids"
@@ -50,7 +70,19 @@ if [[ -f ${pid_file} ]]; then
 fi
 
 if [[ ${mode} != "off" && ${mode} != "hwk" ]]; then
-  "${repo_root}/scripts/run-person-server.sh"
+  current_origin="$(curl -sf --max-time 2 "http://127.0.0.1:8765/.well-known/aauth-agent.json" |
+    python3 -c 'import sys, json; print(json.load(sys.stdin)["issuer"])' 2>/dev/null || true)"
+  if [[ -n ${current_origin} && ${current_origin} != "${ps_origin}" ]]; then
+    echo "Person Server origin is ${current_origin}; restarting with ${ps_origin}"
+    "${repo_root}/scripts/stop-person-server.sh"
+  fi
+  AAUTH_PS_PUBLIC_ORIGIN="${ps_origin}" "${repo_root}/scripts/run-person-server.sh"
+fi
+
+# The gateway owns ports 9999/9998 in edge modes and must be gone otherwise.
+"${repo_root}/scripts/stop-gateway.sh" >/dev/null 2>&1 || true
+if [[ -n ${edge_variant} ]]; then
+  "${repo_root}/scripts/run-gateway.sh" "${edge_variant}"
 fi
 
 # Tracing is on when the OTel Java agent has been downloaded (scripts/setup-tracing.sh)
@@ -63,7 +95,7 @@ if [[ -f ${otel_agent} ]]; then
 fi
 
 start_service() {
-  local name="$1" service_mode="$2"
+  local name="$1" service_mode="$2" port_flag="${3:-}"
   local jar="${repo_root}/$1/target/$1-0.1.0-SNAPSHOT.jar"
   if [[ ! -f ${jar} ]]; then
     echo "ERROR: ${jar} not found. Build first: mvn -DskipTests package" >&2
@@ -79,17 +111,18 @@ start_service() {
     OTEL_METRICS_EXPORTER=none \
     OTEL_LOGS_EXPORTER=none \
     java ${agent_flag:+"${agent_flag}"} -jar "${jar}" --demo.aauth.mode="${service_mode}" \
+    --demo.person-server-url="${ps_origin}" ${port_flag:+"${port_flag}"} \
     >"${log_dir}/${name}.log" 2>&1 &
   echo "$! ${name}" >>"${pid_file}"
   echo "Started ${name} (pid $!) [mode=${service_mode}]"
 }
 
 approve_pending_registrations() {
-  curl -sf -H "Authorization: Bearer ${person_token}" "http://ps.uma.lab:8765/person/registrations" |
+  curl -sf -H "Authorization: Bearer ${person_token}" "${ps_origin}/person/registrations" |
     python3 -c 'import sys, json; [print(r["id"]) for r in json.load(sys.stdin)]' 2>/dev/null |
     while read -r pending_id; do
       name=$(curl -sf -X POST -H "Authorization: Bearer ${person_token}" \
-        "http://ps.uma.lab:8765/person/registrations/${pending_id}/approve" |
+        "${ps_origin}/person/registrations/${pending_id}/approve" |
         python3 -c 'import sys, json; print(json.load(sys.stdin).get("agent_name", "?"))' 2>/dev/null || true)
       echo "Approved agent registration: ${name:-${pending_id}}"
     done
@@ -101,8 +134,13 @@ healthy() {
     curl -sf -o /dev/null "http://portal.uma.lab:8000/health"
 }
 
-start_service market-analysis-agent "${maa_mode}"
-start_service supply-chain-agent "${sca_mode}"
+if [[ -n ${edge_variant} ]]; then
+  start_service market-analysis-agent "${maa_mode}" "--server.port=29998"
+  start_service supply-chain-agent "${sca_mode}" "--server.port=29999"
+else
+  start_service market-analysis-agent "${maa_mode}"
+  start_service supply-chain-agent "${sca_mode}"
+fi
 start_service backend "${backend_mode}"
 
 for _ in $(seq 1 60); do

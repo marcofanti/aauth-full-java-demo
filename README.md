@@ -7,9 +7,10 @@ Signatures via the [aauth-java-library](../aauth-java-library).
 
 Design and phase plan: [docs/PLAN.md](docs/PLAN.md) · status: [docs/PROGRESS.md](docs/PROGRESS.md)
 
-## Current state: full AAuth flows (identity, auth tokens, user consent)
+## Current state: full AAuth flows (identity, auth tokens, consent, refresh)
 
-Phases 0, 1 and 3–6 are complete. At startup the backend and supply-chain agent
+All phases of [docs/PLAN.md](docs/PLAN.md) are complete, including the agentgateway +
+aauth-service verification edge. At startup the backend and supply-chain agent
 register with the local [aauth-person-server](../aauth-person-server) (stable Ed25519
 key persisted in `.aauth-demo/`, `hwk`-signed registration, human/API approval, then an
 `aa-agent+jwt` bound to a per-process ephemeral key). Every A2A hop is signed with
@@ -23,14 +24,22 @@ Run modes (`./scripts/run-demo.sh <mode>`):
 | `hwk` | Pseudonymous RFC 9421 signing (no Person Server) |
 | `jwt` | Agent identity: `aa-agent+jwt`, verifiers require identity |
 | `auth-token` | Agents demand `aa-auth+jwt`: 401 + resource token → autonomous Person Server exchange → retry |
-| `consent` *(default demo)* | Like `auth-token`, but the supply-chain agent requires `require:user`: the Person Server defers until the user approves in the consent popup surfaced by the UI |
+| `consent` | Like `auth-token`, but the supply-chain agent requires `require:user`: the Person Server defers until the user approves in the consent popup surfaced by the UI |
+| `edge` / `edge-auth` / `edge-consent` | The same three enforcement levels, but verified at the **agentgateway + aauth-service edge** (`scripts/setup-gateway.sh` once, then e.g. `./scripts/run-demo.sh edge-auth`): the gateway owns gateway.uma.lab:9999/:9998, agents run behind it with in-process verification off |
 
 Mode semantics: [docs/MODES.md](docs/MODES.md) · consent sequence:
 [docs/CONSENT_FLOW.md](docs/CONSENT_FLOW.md)
 
 Agent tokens auto-renew before expiry (`jkt-jwt` refresh; exercise it with
-`AAUTH_AS_AGENT_TOKEN_LIFETIME=90 ./scripts/run-person-server.sh`). Still to come: the
-agentgateway edge (rest of phase 2).
+`AAUTH_AS_AGENT_TOKEN_LIFETIME=90 ./scripts/run-person-server.sh`).
+
+```
+Browser (portal.uma.lab:3050) ──REST──► backend (portal.uma.lab:8000)
+    ──A2A, signed──► supply-chain-agent (gateway.uma.lab:9999)
+        ──A2A, signed──► market-analysis-agent (gateway.uma.lab:9998)
+
+ps.uma.lab:8765 — aauth-person-server: Agent Provider, token exchange, consent UI
+```
 
 ## Integration tests
 
@@ -55,15 +64,6 @@ Run an optimization, then open Jaeger and select the `backend` service: one trac
 all three services and shows the AAuth choreography — the 401 challenges, Person Server
 exchanges, and the consent wait. The Person Server itself is not instrumented (Python),
 so its endpoints appear as client spans only. Stop with `./scripts/stop-jaeger.sh`.
-
-```
-Browser (portal.uma.lab:3050) ──REST──► backend portal.uma.lab:8000
-    ──A2A──► supply-chain-agent gateway.uma.lab:9999
-        ──A2A──► market-analysis-agent gateway.uma.lab:9998
-```
-
-`ps.uma.lab` is reserved for the Person Server (phases 2+); `grafana.uma.lab` for
-observability (phase 7).
 
 ## Requirements
 
@@ -112,15 +112,16 @@ curl -s http://portal.uma.lab:8000/optimization/results/<requestId>
 | Module | Purpose |
 |---|---|
 | `a2a-support` | Minimal A2A JSON-RPC types, deterministic JSON codec, signing-aware client |
-| `demo-common` | Adaptation layer to the aauth-java-library: HWK signer + inbound verifier (incl. RFC 9530 body-digest enforcement) |
+| `demo-common` | Adaptation layer to the aauth-java-library: signers (`hwk`/`jwt`), inbound verifier with requirement levels (incl. RFC 9530 body-digest enforcement), bootstrap + `jkt-jwt` refresh (`ManagedIdentity`), exchange-capable client (`A2aAuthClient`) |
 | `backend` | Public REST API (portal.uma.lab:8000): async start/progress/results, activity feed |
 | `supply-chain-agent` | A2A server (gateway.uma.lab:9999): policy-driven optimization, optional MAA delegation |
 | `market-analysis-agent` | Leaf A2A server (gateway.uma.lab:9998): canned demand/trend/pattern analyses |
-| `supply-chain-ui` | React + Vite dashboard (portal.uma.lab:3050) with consent banner/popup scaffolding |
+| `supply-chain-ui` | React + Vite dashboard (portal.uma.lab:3050) with the consent banner/popup flow |
+| `integration-tests` | Mode-tagged end-to-end suites, run via `scripts/run-tests.sh` |
 
-The `message/send` request body is serialized exactly once (`A2aJson`) and those bytes are
-what the `RequestSigner` sees and what goes on the wire — the prerequisite for RFC 9421
-signing landing cleanly in phase 4.
+The `message/send` request body is serialized exactly once (`A2aJson`) and those exact
+bytes are what gets signed and what goes on the wire — the invariant that lets RFC 9421
+signatures (with `Content-Digest` coverage) verify cleanly.
 
 ## License
 

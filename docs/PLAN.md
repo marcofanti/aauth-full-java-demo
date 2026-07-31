@@ -1,5 +1,8 @@
 # aauth-full-java-demo — Implementation Plan
 
+> The plan as approved before implementation; kept as-is for the record. Current phase
+> status and every deviation are tracked in [PROGRESS.md](PROGRESS.md).
+
 Java reimplementation of the ideas in `../aauth-full-demo` (Python). That repo has no
 license, so this is a clean-room build from its *architecture and protocol flows only* —
 no code, prose, or config is copied. The AAuth protocol logic comes from
