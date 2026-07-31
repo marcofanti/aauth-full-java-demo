@@ -29,6 +29,8 @@ export AAUTH_PS_ADMIN_TOKEN="mytoken"
 export AAUTH_AS_PERSON_TOKEN="mytoken"
 export AAUTH_PS_INSECURE_DEV="false"
 export AAUTH_AS_INSECURE_DEV="false"
+# Override to a short value (min 60) to exercise jkt-jwt token refresh in a demo session.
+export AAUTH_AS_AGENT_TOKEN_LIFETIME="${AAUTH_AS_AGENT_TOKEN_LIFETIME:-86400}"
 
 # exec so the recorded pid is uvicorn itself, not a wrapper subshell.
 (cd "${ps_repo}" && exec .venv/bin/uvicorn portal.http.app:app --host 127.0.0.1 --port 8765) \

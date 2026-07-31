@@ -28,7 +28,9 @@ Run modes (`./scripts/run-demo.sh <mode>`):
 Mode semantics: [docs/MODES.md](docs/MODES.md) · consent sequence:
 [docs/CONSENT_FLOW.md](docs/CONSENT_FLOW.md)
 
-Still to come: the agentgateway edge (rest of phase 2) and `jkt-jwt` token refresh.
+Agent tokens auto-renew before expiry (`jkt-jwt` refresh; exercise it with
+`AAUTH_AS_AGENT_TOKEN_LIFETIME=90 ./scripts/run-person-server.sh`). Still to come: the
+agentgateway edge (rest of phase 2).
 
 ## Integration tests
 

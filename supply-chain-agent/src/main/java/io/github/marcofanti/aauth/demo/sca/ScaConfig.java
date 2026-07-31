@@ -6,6 +6,7 @@ import io.github.marcofanti.aauth.demo.common.A2aAuthClient;
 import io.github.marcofanti.aauth.demo.common.AAuthClientSigner;
 import io.github.marcofanti.aauth.demo.common.AAuthInboundVerifier;
 import io.github.marcofanti.aauth.demo.common.AgentBootstrap;
+import io.github.marcofanti.aauth.demo.common.ManagedIdentity;
 import io.github.marcofanti.aauth.demo.common.StableKeys;
 import java.net.URI;
 import java.nio.file.Path;
@@ -29,11 +30,11 @@ public class ScaConfig {
     /** Registers with the Person Server at startup in every identity-carrying mode. */
     @Bean
     @ConditionalOnExpression("'${demo.aauth.mode:hwk}'.matches('jwt|auth-token|consent')")
-    public AgentBootstrap.Identity agentIdentity(
+    public ManagedIdentity agentIdentity(
             @Value("${demo.person-server-url:http://ps.uma.lab:8765}") String personServerUrl,
             @Value("${demo.aauth.key-dir:.aauth-demo}") String keyDirectory,
             @Value("${spring.application.name}") String agentName) {
-        return AgentBootstrap.register(new AgentBootstrap.Config(
+        return ManagedIdentity.register(new AgentBootstrap.Config(
                 URI.create(personServerUrl), Path.of(keyDirectory), agentName, Duration.ofMinutes(2)));
     }
 
@@ -46,10 +47,10 @@ public class ScaConfig {
     public MarketAnalysisGateway marketAnalysisGateway(
             @Value("${demo.market-analysis-url:http://gateway.uma.lab:9998/}") String marketAnalysisUrl,
             @Value("${demo.aauth.mode:hwk}") String mode,
-            ObjectProvider<AgentBootstrap.Identity> identity) {
+            ObjectProvider<ManagedIdentity> identity) {
         URI endpoint = URI.create(marketAnalysisUrl);
         if (IDENTITY_MODES.contains(mode)) {
-            A2aAuthClient client = new A2aAuthClient(endpoint, identity.getObject());
+            A2aAuthClient client = new A2aAuthClient(endpoint, identity.getObject()::current);
             return text -> client.sendText(
                     text,
                     (url, code) ->

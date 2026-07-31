@@ -10,6 +10,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.function.BiConsumer;
+import java.util.function.Supplier;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -20,24 +21,34 @@ import org.slf4j.LoggerFactory;
  * blocking through user consent when the resource demands it ({@code onInteraction} surfaces
  * the consent URL and code) — and the call is retried once with the resulting
  * {@code aa-auth+jwt}.
+ *
+ * <p>The identity is read per call (see {@link ManagedIdentity}); when it rotates, the cached
+ * auth token is dropped — its {@code cnf.jwk} binds the previous ephemeral key.
  */
 public final class A2aAuthClient {
 
     private static final Logger log = LoggerFactory.getLogger(A2aAuthClient.class);
 
     private final URI endpoint;
-    private final AgentBootstrap.Identity identity;
+    private final Supplier<AgentBootstrap.Identity> identitySupplier;
     private volatile String authToken;
+    private volatile AgentBootstrap.Identity authTokenIdentity;
 
-    public A2aAuthClient(URI endpoint, AgentBootstrap.Identity identity) {
+    public A2aAuthClient(URI endpoint, Supplier<AgentBootstrap.Identity> identitySupplier) {
         this.endpoint = endpoint;
-        this.identity = identity;
+        this.identitySupplier = identitySupplier;
     }
 
     public String sendText(String text, BiConsumer<String, String> onInteraction) throws A2aClientException {
+        AgentBootstrap.Identity identity = identitySupplier.get();
         String cached = authToken;
+        if (cached != null && authTokenIdentity != identity) {
+            log.info("Agent identity rotated; dropping cached auth token for {}", endpoint);
+            authToken = null;
+            cached = null;
+        }
         try {
-            return send(text, cached != null ? cached : identity.agentToken());
+            return send(identity, text, cached != null ? cached : identity.agentToken());
         } catch (A2aClientException e) {
             String resourceToken = resourceTokenFrom(e);
             if (resourceToken == null) {
@@ -55,12 +66,13 @@ public final class A2aAuthClient {
                                     .build())
                             .build());
             authToken = exchanged;
+            authTokenIdentity = identity;
             log.info("Obtained auth token for {}; retrying", endpoint);
-            return send(text, exchanged);
+            return send(identity, text, exchanged);
         }
     }
 
-    private String send(String text, String token) throws A2aClientException {
+    private String send(AgentBootstrap.Identity identity, String text, String token) throws A2aClientException {
         return new A2aClient(AAuthClientSigner.withToken(identity.ephemeralKeyPair(), token)).sendText(endpoint, text);
     }
 

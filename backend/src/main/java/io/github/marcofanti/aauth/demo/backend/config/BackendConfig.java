@@ -6,6 +6,7 @@ import io.github.marcofanti.aauth.demo.backend.optimization.SupplyChainGateway;
 import io.github.marcofanti.aauth.demo.common.A2aAuthClient;
 import io.github.marcofanti.aauth.demo.common.AAuthClientSigner;
 import io.github.marcofanti.aauth.demo.common.AgentBootstrap;
+import io.github.marcofanti.aauth.demo.common.ManagedIdentity;
 import java.net.URI;
 import java.nio.file.Path;
 import java.time.Duration;
@@ -25,11 +26,11 @@ public class BackendConfig {
     /** Registers with the Person Server at startup; only in {@code jwt} mode. */
     @Bean
     @ConditionalOnProperty(name = "demo.aauth.mode", havingValue = "jwt")
-    public AgentBootstrap.Identity agentIdentity(
+    public ManagedIdentity agentIdentity(
             @Value("${demo.person-server-url:http://ps.uma.lab:8765}") String personServerUrl,
             @Value("${demo.aauth.key-dir:.aauth-demo}") String keyDirectory,
             @Value("${spring.application.name}") String agentName) {
-        return AgentBootstrap.register(new AgentBootstrap.Config(
+        return ManagedIdentity.register(new AgentBootstrap.Config(
                 URI.create(personServerUrl), Path.of(keyDirectory), agentName, Duration.ofMinutes(2)));
     }
 
@@ -42,10 +43,10 @@ public class BackendConfig {
     public SupplyChainGateway supplyChainGateway(
             @Value("${demo.supply-chain-url:http://gateway.uma.lab:9999/}") String supplyChainUrl,
             @Value("${demo.aauth.mode:hwk}") String mode,
-            ObjectProvider<AgentBootstrap.Identity> identity) {
+            ObjectProvider<ManagedIdentity> identity) {
         URI endpoint = URI.create(supplyChainUrl);
         if ("jwt".equals(mode)) {
-            A2aAuthClient client = new A2aAuthClient(endpoint, identity.getObject());
+            A2aAuthClient client = new A2aAuthClient(endpoint, identity.getObject()::current);
             return client::sendText;
         }
         RequestSigner signer = "hwk".equals(mode) ? AAuthClientSigner.ephemeral() : RequestSigner.none();

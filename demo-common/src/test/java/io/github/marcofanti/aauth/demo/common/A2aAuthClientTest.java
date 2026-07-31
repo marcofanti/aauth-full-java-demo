@@ -170,7 +170,8 @@ class A2aAuthClientTest {
     void exchangesResourceTokenAndRetries() throws Exception {
         stubPersonServer();
         AtomicInteger calls = stubResourceRequiringAuthToken();
-        A2aAuthClient client = new A2aAuthClient(resourceUri(), identity());
+        AgentBootstrap.Identity fixed = identity();
+        A2aAuthClient client = new A2aAuthClient(resourceUri(), () -> fixed);
 
         String reply = client.sendText("do the thing", null);
 
@@ -183,6 +184,23 @@ class A2aAuthClientTest {
     }
 
     @Test
+    void identityRotationDropsCachedAuthToken() throws Exception {
+        stubPersonServer();
+        AtomicInteger calls = stubResourceRequiringAuthToken();
+        java.util.concurrent.atomic.AtomicReference<AgentBootstrap.Identity> active =
+                new java.util.concurrent.atomic.AtomicReference<>(identity());
+        A2aAuthClient client = new A2aAuthClient(resourceUri(), active::get);
+
+        client.sendText("first", null);
+        assertThat(calls.get()).isEqualTo(2); // 401 + retried with auth token
+
+        active.set(identity()); // refresh: new Identity instance, same agent
+        client.sendText("second", null);
+        // Cache dropped: agent-token attempt (401) + fresh exchange + retry.
+        assertThat(calls.get()).isEqualTo(4);
+    }
+
+    @Test
     void non401FailuresPassThrough() {
         resource.createContext("/", exchange -> {
             try (exchange) {
@@ -191,7 +209,10 @@ class A2aAuthClientTest {
         });
 
         assertThatExceptionOfType(A2aClientException.class)
-                .isThrownBy(() -> new A2aAuthClient(resourceUri(), identity()).sendText("hi", null))
+                .isThrownBy(() -> {
+                    AgentBootstrap.Identity fixed = identity();
+                    new A2aAuthClient(resourceUri(), () -> fixed).sendText("hi", null);
+                })
                 .satisfies(e -> assertThat(e.statusCode()).isEqualTo(500));
     }
 
@@ -204,7 +225,10 @@ class A2aAuthClientTest {
         });
 
         assertThatExceptionOfType(A2aClientException.class)
-                .isThrownBy(() -> new A2aAuthClient(resourceUri(), identity()).sendText("hi", null))
+                .isThrownBy(() -> {
+                    AgentBootstrap.Identity fixed = identity();
+                    new A2aAuthClient(resourceUri(), () -> fixed).sendText("hi", null);
+                })
                 .satisfies(e -> assertThat(e.statusCode()).isEqualTo(401));
     }
 }

@@ -9,3 +9,5 @@ dist/
 *.key
 *.pem
 .DS_Store
+.aauth-demo/
+tools/
