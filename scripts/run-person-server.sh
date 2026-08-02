@@ -7,6 +7,8 @@
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# shellcheck source=../hosts.env
+source "${repo_root}/hosts.env"
 impl="${AAUTH_PS_IMPL:-python}"
 pid_file="${repo_root}/.person-server-pid"
 log_dir="${repo_root}/logs"
@@ -43,7 +45,7 @@ fi
 
 # Edge modes need a local-development origin (the Go verifier rejects http://ps.uma.lab
 # issuers); run-demo.sh overrides this to http://127.0.0.1:8765 for them.
-export AAUTH_PS_PUBLIC_ORIGIN="${AAUTH_PS_PUBLIC_ORIGIN:-http://ps.uma.lab:8765}"
+export AAUTH_PS_PUBLIC_ORIGIN="${AAUTH_PS_PUBLIC_ORIGIN:-http://${DEMO_PS_HOST}:8765}"
 export AAUTH_AS_PUBLIC_ORIGIN="${AAUTH_AS_PUBLIC_ORIGIN:-${AAUTH_PS_PUBLIC_ORIGIN}}"
 export AAUTH_PS_ADMIN_TOKEN="mytoken"
 export AAUTH_AS_PERSON_TOKEN="mytoken"
@@ -57,15 +59,18 @@ if [[ ${impl} == "java" ]]; then
   (cd "${ps_repo}" && exec java -jar "${jar}" --server.port=8765 --server.address=127.0.0.1) \
     >"${log_dir}/person-server.log" 2>&1 &
 else
-  (cd "${ps_repo}" && exec .venv/bin/uvicorn portal.http.app:app --host 127.0.0.1 --port 8765) \
+  # portal_permission_hotfix wraps the portal app to fix its deferred /permission
+  # handling (upstream 500s on out-of-scope mission permission checks).
+  (cd "${ps_repo}" && PYTHONPATH="${repo_root}/scripts${PYTHONPATH:+:${PYTHONPATH}}" \
+    exec .venv/bin/uvicorn portal_permission_hotfix:app --host 127.0.0.1 --port 8765) \
     >"${log_dir}/person-server.log" 2>&1 &
 fi
 echo "$!" >"${pid_file}"
 echo "Started Person Server (${impl}, pid $!)"
 
 for _ in $(seq 1 30); do
-  if curl -sf -o /dev/null "http://ps.uma.lab:8765/.well-known/aauth-agent.json"; then
-    echo "Person Server is up: http://ps.uma.lab:8765"
+  if curl -sf -o /dev/null "http://${DEMO_PS_HOST}:8765/.well-known/aauth-agent.json"; then
+    echo "Person Server is up: http://${DEMO_PS_HOST}:8765"
     exit 0
   fi
   sleep 1

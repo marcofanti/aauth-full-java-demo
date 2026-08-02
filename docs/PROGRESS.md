@@ -19,6 +19,40 @@ design decision deviates from the plan or from the Python reference.
 
 ## Decision log
 
+- 2026-08-02 — **Missions mode** (post-plan): `run-demo.sh missions` = `jwt` identity
+  plus the Person Server's mission layer. Backend proposes a mission (approved tools:
+  `supply-chain:optimize`, `market-analysis:analyze`), gates each step via signed
+  `POST /permission`, audits results into the mission log, and closes with an
+  out-of-scope `inventory:purchase` that defers to the user (`interaction_required`).
+  New: `MissionClient`/`MissionException` (demo-common), `mission` package + REST API
+  (backend), `MissionFlowIT` (tag `missions`, in `run-tests.sh all`). Live-verified:
+  deny and approve paths, full PS mission log. Two upstream gaps found (Python PS):
+  deferred mission proposals aren't agent-pollable (`GET /pending` 404s on mission
+  pendings) — so mission creation stays auto-approved; and the portal app 500s on
+  deferred permission checks — fixed at runtime by `scripts/portal_permission_hotfix.py`
+  (wraps the app, no upstream edits). Both worth reporting upstream. Java PS has no
+  mission endpoints; missions mode requires the Python PS. See docs/MISSIONS.md.
+
+- 2026-08-02 — **Hostnames in hosts.env** (user request): all uma.lab names live in
+  `hosts.env` at the repo root (env-style, every value `${VAR:-default}`-overridable;
+  includes the reserved grafana/keycloak/alice-as names). Scripts source it;
+  run-demo.sh passes `--demo.*` flags to the services; run-tests.sh passes
+  `-Ddemo.*.host` system properties read by `DemoApi`. Java property defaults keep the
+  same names for manual runs. Gateway YAMLs and docker-compose intentionally keep
+  literals (signed authorities and compose aliases are coupled to them).
+
+- 2026-08-02 — **CI workflows**: `.github/workflows/build.yml` (mvn verify, Java 26,
+  library from Central) and `integration.yml` (checks out the public Python PS as a
+  sibling, maps uma.lab names to loopback, runs `run-tests.sh all`; uploads logs on
+  failure). Actions pinned to SHAs; actionlint + zizmor clean. Edge modes stay
+  local-only (gateway binaries). The Java PS is not in CI — it has no public remote.
+
+- 2026-08-02 — **Python-PS compose variant**: `docker/compose.python-ps.yml` overrides
+  the `person-server` service to build `docker/Dockerfile.python-ps` (Python reference
+  from source, permission hotfix included, own data volume — the two implementations'
+  SQLite schemas differ). Live-verified: identity variant end to end with the Java
+  agents against the containerized Python PS.
+
 - 2026-08-02 — **Adopt aauth-java-library 0.1.1**: the two demo findings are fixed
   upstream — `RequestVerifier` now enforces the RFC 9530 body-vs-digest check itself,
   and the library's default HTTP clients (`TokenExchange`, `CachingJwksFetcher`,

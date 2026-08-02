@@ -11,6 +11,9 @@
 #   edge / edge-auth / edge-consent — same three levels, but enforced at the
 #         agentgateway + aauth-service edge (scripts/setup-gateway.sh); agents run
 #         behind the gateway with in-process verification off
+#   missions — jwt identity plus the Person Server's mission layer: the backend records
+#         a mission, in-scope steps auto-grant via /permission with no prompts, and an
+#         out-of-scope purchase step defers to the user (Python PS only)
 # Pending registrations are auto-approved via the Person Server's /person API.
 # Requires jars built via: mvn -DskipTests package
 set -euo pipefail
@@ -21,6 +24,9 @@ mode="${1:-jwt}"
 case "${mode}" in
 off | hwk | jwt)
   backend_mode="${mode}" sca_mode="${mode}" maa_mode="${mode}"
+  ;;
+missions)
+  backend_mode="jwt" sca_mode="jwt" maa_mode="jwt" mission_layer="on"
   ;;
 auth-token)
   backend_mode="jwt" sca_mode="auth-token" maa_mode="auth-token"
@@ -38,34 +44,48 @@ edge-consent)
   backend_mode="jwt" sca_mode="edge" maa_mode="edge" edge_variant="consent"
   ;;
 *)
-  echo "Usage: $0 [off|hwk|jwt|auth-token|consent|edge|edge-auth|edge-consent]" >&2
+  echo "Usage: $0 [off|hwk|jwt|auth-token|consent|missions|edge|edge-auth|edge-consent]" >&2
   exit 1
   ;;
 esac
+
+mission_layer="${mission_layer:-}"
+
+repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# shellcheck source=../hosts.env
+source "${repo_root}/hosts.env"
 
 edge_variant="${edge_variant:-}"
 # Edge modes require a local-dev Person Server origin (Go verifier issuer rules).
 if [[ -n ${edge_variant} ]]; then
   ps_origin="http://127.0.0.1:8765"
 else
-  ps_origin="http://ps.uma.lab:8765"
+  ps_origin="http://${DEMO_PS_HOST}:8765"
 fi
 
-repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 pid_file="${repo_root}/.demo-pids"
 log_dir="${repo_root}/logs"
 person_token="mytoken"
 mkdir -p "${log_dir}"
 
-for host in portal.uma.lab gateway.uma.lab ps.uma.lab; do
+for host in "${DEMO_PORTAL_HOST}" "${DEMO_GATEWAY_HOST}" "${DEMO_PS_HOST}"; do
   if ! grep -q "${host}" /etc/hosts; then
-    echo "ERROR: ${host} is not in /etc/hosts. Add:  127.0.0.1 portal.uma.lab gateway.uma.lab ps.uma.lab" >&2
+    echo "ERROR: ${host} is not in /etc/hosts. Add:  127.0.0.1 ${DEMO_PORTAL_HOST} ${DEMO_GATEWAY_HOST} ${DEMO_PS_HOST}" >&2
     exit 1
   fi
 done
 
 if [[ -f ${pid_file} ]]; then
   echo "ERROR: ${pid_file} exists — services may already be running. Run scripts/stop-demo.sh first." >&2
+  exit 1
+fi
+
+# The Java Person Server has no mission endpoints; missions mode needs the Python one.
+# Mission creation stays on the PS default (auto-approve): its deferred-approval path is
+# not agent-pollable (GET /pending rejects mission pendings), so the user-consent moment
+# in this mode is the out-of-scope permission check, which polls fine.
+if [[ -n ${mission_layer} && ${AAUTH_PS_IMPL:-python} == "java" ]]; then
+  echo "ERROR: missions mode needs the Python Person Server (the Java port has no mission layer)." >&2
   exit 1
 fi
 
@@ -95,8 +115,9 @@ if [[ -f ${otel_agent} ]]; then
 fi
 
 start_service() {
-  local name="$1" service_mode="$2" port_flag="${3:-}"
-  local jar="${repo_root}/$1/target/$1-0.1.0-SNAPSHOT.jar"
+  local name="$1" service_mode="$2"
+  shift 2
+  local jar="${repo_root}/${name}/target/${name}-0.1.0-SNAPSHOT.jar"
   if [[ ! -f ${jar} ]]; then
     echo "ERROR: ${jar} not found. Build first: mvn -DskipTests package" >&2
     exit 1
@@ -111,7 +132,7 @@ start_service() {
     OTEL_METRICS_EXPORTER=none \
     OTEL_LOGS_EXPORTER=none \
     java ${agent_flag:+"${agent_flag}"} -jar "${jar}" --demo.aauth.mode="${service_mode}" \
-    --demo.person-server-url="${ps_origin}" ${port_flag:+"${port_flag}"} \
+    --demo.person-server-url="${ps_origin}" "$@" \
     >"${log_dir}/${name}.log" 2>&1 &
   echo "$! ${name}" >>"${pid_file}"
   echo "Started ${name} (pid $!) [mode=${service_mode}]"
@@ -129,19 +150,31 @@ approve_pending_registrations() {
 }
 
 healthy() {
-  curl -sf -o /dev/null "http://gateway.uma.lab:9998/.well-known/agent-card.json" &&
-    curl -sf -o /dev/null "http://gateway.uma.lab:9999/.well-known/agent-card.json" &&
-    curl -sf -o /dev/null "http://portal.uma.lab:8000/health"
+  curl -sf -o /dev/null "http://${DEMO_GATEWAY_HOST}:9998/.well-known/agent-card.json" &&
+    curl -sf -o /dev/null "http://${DEMO_GATEWAY_HOST}:9999/.well-known/agent-card.json" &&
+    curl -sf -o /dev/null "http://${DEMO_PORTAL_HOST}:8000/health"
 }
 
+# Hostname wiring from hosts.env; the services' own property defaults carry the same names.
+maa_flags=(--demo.agent-url="http://${DEMO_GATEWAY_HOST}:9998/")
+sca_flags=(
+  --demo.agent-url="http://${DEMO_GATEWAY_HOST}:9999/"
+  --demo.market-analysis-url="http://${DEMO_GATEWAY_HOST}:9998/"
+)
+backend_flags=(
+  --demo.supply-chain-url="http://${DEMO_GATEWAY_HOST}:9999/"
+  --demo.market-analysis-url="http://${DEMO_GATEWAY_HOST}:9998/"
+  --demo.cors-allowed-origins="http://${DEMO_PORTAL_HOST}:3050"
+)
+
 if [[ -n ${edge_variant} ]]; then
-  start_service market-analysis-agent "${maa_mode}" "--server.port=29998"
-  start_service supply-chain-agent "${sca_mode}" "--server.port=29999"
+  start_service market-analysis-agent "${maa_mode}" "${maa_flags[@]}" "--server.port=29998"
+  start_service supply-chain-agent "${sca_mode}" "${sca_flags[@]}" "--server.port=29999"
 else
-  start_service market-analysis-agent "${maa_mode}"
-  start_service supply-chain-agent "${sca_mode}"
+  start_service market-analysis-agent "${maa_mode}" "${maa_flags[@]}"
+  start_service supply-chain-agent "${sca_mode}" "${sca_flags[@]}"
 fi
-start_service backend "${backend_mode}"
+start_service backend "${backend_mode}" "${backend_flags[@]}"
 
 for _ in $(seq 1 60); do
   if [[ ${mode} != "off" && ${mode} != "hwk" ]]; then
@@ -149,7 +182,7 @@ for _ in $(seq 1 60); do
   fi
   if healthy; then
     echo
-    echo "All services up [mode=${mode}]. UI: cd supply-chain-ui && npm run dev  (http://portal.uma.lab:3050)"
+    echo "All services up [mode=${mode}]. UI: cd supply-chain-ui && npm run dev  (http://${DEMO_PORTAL_HOST}:3050)"
     echo "Stop with: scripts/stop-demo.sh"
     exit 0
   fi

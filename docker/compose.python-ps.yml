@@ -1,0 +1,17 @@
+# Cross-implementation variant: run the Python Person Server reference
+# (../aauth-person-server) instead of the Java port. Same service name, network alias,
+# environment, and ports — only the image and its data volume change (the two
+# implementations' SQLite schemas are not compatible, so each keeps its own volume).
+#
+#   AAUTH_VARIANT=identity docker compose -f docker-compose.yml \
+#     -f docker/compose.python-ps.yml up -d --build
+services:
+  person-server:
+    build:
+      context: ..
+      dockerfile: aauth-full-java-demo/docker/Dockerfile.python-ps
+    volumes:
+      - ps-python-data:/data
+
+volumes:
+  ps-python-data:

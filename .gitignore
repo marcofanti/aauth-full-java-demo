@@ -3,6 +3,9 @@ logs/
 .vscode/
 *.pid
 .infra-pids
+.demo-pids
+.person-server-pid
+__pycache__/
 node_modules/
 dist/
 .env

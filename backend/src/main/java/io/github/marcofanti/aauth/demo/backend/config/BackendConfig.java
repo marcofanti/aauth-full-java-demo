@@ -2,11 +2,13 @@ package io.github.marcofanti.aauth.demo.backend.config;
 
 import io.github.marcofanti.aauth.demo.a2a.A2aClient;
 import io.github.marcofanti.aauth.demo.a2a.RequestSigner;
+import io.github.marcofanti.aauth.demo.backend.mission.MissionService;
 import io.github.marcofanti.aauth.demo.backend.optimization.SupplyChainGateway;
 import io.github.marcofanti.aauth.demo.common.A2aAuthClient;
 import io.github.marcofanti.aauth.demo.common.AAuthClientSigner;
 import io.github.marcofanti.aauth.demo.common.AgentBootstrap;
 import io.github.marcofanti.aauth.demo.common.ManagedIdentity;
+import io.github.marcofanti.aauth.demo.common.MissionClient;
 import java.net.URI;
 import java.nio.file.Path;
 import java.time.Duration;
@@ -52,6 +54,26 @@ public class BackendConfig {
         RequestSigner signer = "hwk".equals(mode) ? AAuthClientSigner.ephemeral() : RequestSigner.none();
         A2aClient plain = new A2aClient(signer);
         return (prompt, onInteraction) -> plain.sendText(endpoint, prompt);
+    }
+
+    /** Signed client for the Person Server's mission layer; needs the agent identity. */
+    @Bean
+    @ConditionalOnProperty(name = "demo.aauth.mode", havingValue = "jwt")
+    public MissionClient missionClient(
+            @Value("${demo.person-server-url:http://ps.uma.lab:8765}") String personServerUrl,
+            ManagedIdentity identity) {
+        return new MissionClient(URI.create(personServerUrl), identity::current);
+    }
+
+    /** Mission orchestration (propose → per-step permission → audit); only in {@code jwt} mode. */
+    @Bean
+    @ConditionalOnProperty(name = "demo.aauth.mode", havingValue = "jwt")
+    public MissionService missionService(
+            MissionClient missionClient,
+            SupplyChainGateway gateway,
+            io.github.marcofanti.aauth.demo.backend.activity.ActivityService activities,
+            ExecutorService optimizationExecutor) {
+        return new MissionService(missionClient, gateway, activities, optimizationExecutor);
     }
 
     /** Background executor for optimization runs; each run may block for minutes on user consent. */

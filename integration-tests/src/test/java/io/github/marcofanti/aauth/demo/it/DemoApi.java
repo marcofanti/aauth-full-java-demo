@@ -12,13 +12,23 @@ import java.util.LinkedHashSet;
 import java.util.Map;
 import java.util.Set;
 
-/** Thin client for the live demo services under test (started by scripts/run-demo.sh). */
+/**
+ * Thin client for the live demo services under test (started by scripts/run-demo.sh).
+ * Hostnames come from the {@code demo.*.host} system properties (run-tests.sh passes them
+ * from hosts.env), defaulting to the uma.lab names.
+ */
 final class DemoApi {
 
-    static final URI BACKEND = URI.create("http://portal.uma.lab:8000");
-    static final URI SUPPLY_CHAIN_AGENT = URI.create("http://gateway.uma.lab:9999/");
-    static final URI MARKET_ANALYSIS_AGENT = URI.create("http://gateway.uma.lab:9998/");
-    static final URI PERSON_SERVER = URI.create("http://ps.uma.lab:8765");
+    static final URI BACKEND = URI.create("http://" + host("demo.portal.host", "portal.uma.lab") + ":8000");
+    static final URI SUPPLY_CHAIN_AGENT =
+            URI.create("http://" + host("demo.gateway.host", "gateway.uma.lab") + ":9999/");
+    static final URI MARKET_ANALYSIS_AGENT =
+            URI.create("http://" + host("demo.gateway.host", "gateway.uma.lab") + ":9998/");
+    static final URI PERSON_SERVER = URI.create("http://" + host("demo.ps.host", "ps.uma.lab") + ":8765");
+
+    private static String host(String property, String fallback) {
+        return System.getProperty(property, fallback);
+    }
 
     // HTTP/1.1: the Person Server's parser (uvicorn/h11) mishandles the JDK client's default
     // h2c upgrade, dropping POST bodies.
@@ -34,6 +44,14 @@ final class DemoApi {
     record Progress(String status, String interactionUrl, String interactionCode, String error) {}
 
     record RunResult(String finalStatus, Set<String> statusesSeen, String report, String error) {}
+
+    record MissionProgress(
+            String status,
+            String missionS256,
+            String interactionUrl,
+            String interactionCode,
+            java.util.List<Map<String, Object>> steps,
+            String error) {}
 
     static HttpResponse<String> get(URI uri) {
         return send(HttpRequest.newBuilder(uri).GET().build());
@@ -121,6 +139,84 @@ final class DemoApi {
         }
 
         return pollToTerminal(requestId, timeout, seen);
+    }
+
+    static String startMission(String description, String... products) {
+        StringBuilder productArray = new StringBuilder("[");
+        for (int i = 0; i < products.length; i++) {
+            productArray.append(i == 0 ? "" : ",").append(quote(products[i]));
+        }
+        productArray.append("]");
+        HttpResponse<String> response = postJson(
+                BACKEND.resolve("/missions/start"),
+                "{\"description\":" + quote(description) + ",\"products\":" + productArray + "}");
+        if (response.statusCode() != 200) {
+            throw new AssertionError("mission start returned HTTP " + response.statusCode() + ": " + response.body());
+        }
+        return String.valueOf(json(response).get("missionId"));
+    }
+
+    @SuppressWarnings("unchecked")
+    static MissionProgress missionProgress(String missionId) {
+        Map<String, Object> body = json(get(BACKEND.resolve("/missions/progress/" + missionId)));
+        return new MissionProgress(
+                String.valueOf(body.get("status")),
+                stringOrNull(body.get("missionS256")),
+                stringOrNull(body.get("interactionUrl")),
+                stringOrNull(body.get("interactionCode")),
+                (java.util.List<Map<String, Object>>) body.get("steps"),
+                stringOrNull(body.get("error")));
+    }
+
+    /**
+     * Waits for the mission to ask for a user decision in the given status
+     * ({@code awaiting_approval} or {@code interaction_required}), then decides via the PS
+     * consent REST API. Matching on the expected status keeps the mission-approval ask and
+     * the later per-step ask apart.
+     */
+    static MissionProgress decideMissionInteraction(
+            String missionId, String expectedStatus, boolean approve, Duration timeout) {
+        long deadline = System.nanoTime() + timeout.toNanos();
+        while (System.nanoTime() < deadline) {
+            MissionProgress progress = missionProgress(missionId);
+            String status = progress.status();
+            if (expectedStatus.equals(status)) {
+                decideConsent(progress.interactionCode(), approve);
+                return progress;
+            }
+            if ("completed".equals(status) || "failed".equals(status)) {
+                throw new AssertionError(
+                        "Mission went terminal (" + status + ") before asking for a decision: " + progress);
+            }
+            sleep();
+        }
+        throw new AssertionError(
+                "Mission " + missionId + " never reached " + expectedStatus + " within " + timeout.toSeconds() + "s");
+    }
+
+    static MissionProgress awaitMissionTerminal(String missionId, Duration timeout) {
+        long deadline = System.nanoTime() + timeout.toNanos();
+        while (System.nanoTime() < deadline) {
+            MissionProgress progress = missionProgress(missionId);
+            if ("completed".equals(progress.status()) || "failed".equals(progress.status())) {
+                return progress;
+            }
+            sleep();
+        }
+        throw new AssertionError("Mission " + missionId + " not terminal within " + timeout.toSeconds() + "s");
+    }
+
+    static void decideConsent(String code, boolean approve) {
+        if (code == null) {
+            throw new AssertionError("No interaction code to decide on");
+        }
+        Map<String, Object> consent = json(get(PERSON_SERVER.resolve("/consent?code=" + code)));
+        String pendingId = String.valueOf(consent.get("pending_id"));
+        HttpResponse<String> decision = postJson(
+                PERSON_SERVER.resolve("/consent/" + pendingId + "/decision"), "{\"approved\": " + approve + "}");
+        if (decision.statusCode() != 200) {
+            throw new AssertionError("Consent decision returned HTTP " + decision.statusCode());
+        }
     }
 
     private static RunResult pollToTerminal(String requestId, Duration timeout, Set<String> seen) {
