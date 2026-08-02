@@ -1,0 +1,85 @@
+# aauth-service config — edge mode "consent" (AAuth mode 3 + user consent).
+# Identified callers without an aa-auth+jwt get a 401 challenge embedding a resource
+# token (aud = the Person Server); the caller exchanges it and retries.
+#
+# Docker-compose variant: the Person Server runs with origin http://ps.localhost:8765 —
+# a *.localhost name satisfies the Go verifier's local-development issuer rule, compose
+# DNS resolves it in-network, and browsers resolve *.localhost to loopback natively.
+listen:
+  grpc: ":7070"
+  http: ":8081"
+
+jwks_cache:
+  success_ttl: 30s
+  error_ttl: 5s
+  max_entries: 100
+
+resources:
+  - id: supply-chain-agent
+    issuer: http://gateway.uma.lab:9999
+    client_name: Supply Chain Agent
+    hosts:
+      - gateway.uma.lab:9999
+    signing_key:
+      kid: sca-edge-rsk-1
+      alg: EdDSA
+      private_key_file: keys/sca-resource-key.pem
+    signature_window: 60s
+    allow_pseudonymous: false
+    # The gateway forwards the authority without the port; pin the signed value.
+    authority_override: "gateway.uma.lab:9999"
+    access:
+      require: auth-token
+    person_server:
+      issuer: http://ps.localhost:8765
+      jwks_uri: http://ps.localhost:8765/.well-known/jwks.json
+    supported_scopes:
+      - supply-chain:optimize
+      - require:user
+    scope_descriptions:
+      "require:user": User consent required at the Person Server
+    default_resource_token_scopes:
+      - supply-chain:optimize
+      - require:user
+    agent_servers:
+      - issuer: http://ps.localhost:8765
+        jwks_uri: http://ps.localhost:8765/.well-known/jwks.json
+    auth_servers:
+      - issuer: http://ps.localhost:8765
+        jwks_uri: http://ps.localhost:8765/.well-known/jwks.json
+    allowed_signature_key_schemes:
+      - jwt
+    policy:
+      name: default
+
+  - id: market-analysis-agent
+    issuer: http://gateway.uma.lab:9998
+    client_name: Market Analysis Agent
+    hosts:
+      - gateway.uma.lab:9998
+    signing_key:
+      kid: maa-edge-rsk-1
+      alg: EdDSA
+      private_key_file: keys/maa-resource-key.pem
+    signature_window: 60s
+    allow_pseudonymous: false
+    authority_override: "gateway.uma.lab:9998"
+    access:
+      require: auth-token
+    person_server:
+      issuer: http://ps.localhost:8765
+      jwks_uri: http://ps.localhost:8765/.well-known/jwks.json
+    supported_scopes:
+      - market-analysis:analyze
+    default_resource_token_scopes:
+      - market-analysis:analyze
+    agent_servers:
+      - issuer: http://ps.localhost:8765
+        jwks_uri: http://ps.localhost:8765/.well-known/jwks.json
+    auth_servers:
+      - issuer: http://ps.localhost:8765
+        jwks_uri: http://ps.localhost:8765/.well-known/jwks.json
+    allowed_signature_key_schemes:
+      - jwt
+    policy:
+      name: default

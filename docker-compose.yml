@@ -1,0 +1,155 @@
+# Full AAuth demo in containers — the edge architecture end to end:
+#   UI -> backend -> agentgateway (gateway.uma.lab) -> agents, with the aauth-service
+#   verifying every A2A hop and the Java Person Server issuing tokens/consent.
+#
+# Enforcement level (aauth-service policy variant):
+#   AAUTH_VARIANT=identity|auth-token|consent docker compose up -d      (default: identity)
+#
+# Host prerequisites: /etc/hosts maps portal.uma.lab and gateway.uma.lab to 127.0.0.1
+# (the consent UI at http://ps.localhost:8765 needs no entry — browsers resolve
+# *.localhost to loopback). Build context is the parent agents/ directory so the
+# aauth-java-library and aauth-java-person-server are built from source.
+name: aauth-demo
+
+services:
+  person-server:
+    build:
+      context: ..
+      dockerfile: aauth-full-java-demo/docker/Dockerfile.person-server
+    environment:
+      AAUTH_DATABASE_URL: sqlite:////data/aauth.db
+      AAUTH_PS_SIGNING_KEY_PATH: /data/ps-signing-key.pem
+      AAUTH_AS_SIGNING_KEY_PATH: /data/as-signing-key.pem
+      AAUTH_PS_PUBLIC_ORIGIN: http://ps.localhost:8765
+      AAUTH_AS_PUBLIC_ORIGIN: http://ps.localhost:8765
+      AAUTH_PS_ADMIN_TOKEN: mytoken
+      AAUTH_AS_PERSON_TOKEN: mytoken
+      AAUTH_PS_INSECURE_DEV: "false"
+      AAUTH_AS_INSECURE_DEV: "false"
+    volumes:
+      - ps-data:/data
+    ports:
+      - "8765:8765"
+    networks:
+      default:
+        aliases:
+          - ps.localhost
+
+  # Approves pending agent registrations for 120s after startup (the human step,
+  # automated for the demo; the PS console at http://ps.localhost:8765/ui also works).
+  approver:
+    image: curlimages/curl:8.14.1
+    depends_on:
+      - person-server
+    restart: "no"
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        for i in $$(seq 1 60); do
+          ids=$$(curl -sf -H "Authorization: Bearer mytoken" http://person-server:8765/person/registrations \
+            | grep -o '"id":"[^"]*"' | cut -d'"' -f4)
+          for id in $$ids; do
+            curl -sf -X POST -H "Authorization: Bearer mytoken" \
+              "http://person-server:8765/person/registrations/$$id/approve" >/dev/null \
+              && echo "approved registration $$id"
+          done
+          sleep 2
+        done
+
+  aauth-service:
+    build:
+      context: ..
+      dockerfile: aauth-full-java-demo/docker/Dockerfile.edge
+    command: ["aauth-service"]
+    environment:
+      AAUTH_VARIANT: "${AAUTH_VARIANT:-identity}"
+    volumes:
+      - ./docker/configs:/work/configs:ro
+      - edge-keys:/work/keys
+
+  gateway:
+    build:
+      context: ..
+      dockerfile: aauth-full-java-demo/docker/Dockerfile.edge
+    command: ["gateway"]
+    depends_on:
+      - aauth-service
+    volumes:
+      - ./docker/configs:/work/configs:ro
+    ports:
+      - "9999:9999"
+      - "9998:9998"
+    networks:
+      default:
+        aliases:
+          - gateway.uma.lab
+
+  market-analysis-agent:
+    build:
+      context: ..
+      dockerfile: aauth-full-java-demo/docker/Dockerfile.service
+      args:
+        SERVICE: market-analysis-agent
+    command: ["--demo.aauth.mode=edge", "--demo.person-server-url=http://ps.localhost:8765"]
+    environment: &otel-env
+      OTEL_TRACES_EXPORTER: otlp
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4318
+      OTEL_METRICS_EXPORTER: none
+      OTEL_LOGS_EXPORTER: none
+      OTEL_SERVICE_NAME: market-analysis-agent
+
+  supply-chain-agent:
+    build:
+      context: ..
+      dockerfile: aauth-full-java-demo/docker/Dockerfile.service
+      args:
+        SERVICE: supply-chain-agent
+    command: ["--demo.aauth.mode=edge", "--demo.person-server-url=http://ps.localhost:8765"]
+    depends_on:
+      - person-server
+      - gateway
+    environment:
+      <<: *otel-env
+      OTEL_SERVICE_NAME: supply-chain-agent
+    volumes:
+      - sca-keys:/work/.aauth-demo
+
+  backend:
+    build:
+      context: ..
+      dockerfile: aauth-full-java-demo/docker/Dockerfile.service
+      args:
+        SERVICE: backend
+    command: ["--demo.aauth.mode=jwt", "--demo.person-server-url=http://ps.localhost:8765"]
+    depends_on:
+      - person-server
+      - gateway
+    environment:
+      <<: *otel-env
+      OTEL_SERVICE_NAME: backend
+    volumes:
+      - backend-keys:/work/.aauth-demo
+    ports:
+      - "8000:8000"
+    networks:
+      default:
+        aliases:
+          - portal.uma.lab
+
+  ui:
+    build:
+      context: ..
+      dockerfile: aauth-full-java-demo/docker/ui.Dockerfile
+    ports:
+      - "3050:3050"
+
+  jaeger:
+    image: jaegertracing/jaeger:2.20.0
+    ports:
+      - "16686:16686"
+
+volumes:
+  ps-data:
+  edge-keys:
+  backend-keys:
+  sca-keys:

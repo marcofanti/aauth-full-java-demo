@@ -1,0 +1,101 @@
+# agentgateway config for the AAuth edge — docker-compose variant.
+# Backends are compose service names; the gateway container carries the
+# gateway.uma.lab network alias so signed authorities resolve in-network.
+#
+# The gateway owns the ports the demo's canonical authorities were built around —
+# gateway.uma.lab:9999 (supply-chain-agent) and :9998 (market-analysis-agent) — so the
+# agents' signed URLs are unchanged from the in-process modes. Agents themselves run
+# behind it on supply-chain-agent:9999/29998 with their own verification off (demo.aauth.mode=edge).
+#
+# Per port:
+#   - AAuth discovery documents are served by the aauth-service HTTP sidecar (:8081),
+#     with the authority rewritten so it resolves the right resource entry.
+#   - A2A JSON-RPC POSTs go through gRPC ExtAuthz (:7070) where the aauth-service
+#     verifies RFC 9421 signatures and enforces the mode's access requirement.
+#   - Everything else (agent card, health) passes straight through to the agent.
+config:
+  tracing:
+    otlpEndpoint: http://jaeger:4317
+    randomSampling: true
+    fields:
+      add:
+        aauth_scheme: 'aauth.scheme'
+        aauth_agent_identity: 'aauth.agent'
+        sig_key: 'request.headers["signature-key"]'
+
+binds:
+- port: 9999
+  listeners:
+  - routes:
+    - name: sca-aauth-discovery
+      matches:
+      - path:
+          exact: /.well-known/aauth-resource.json
+      - path:
+          exact: /.well-known/jwks.json
+      policies:
+        urlRewrite:
+          authority:
+            full: gateway.uma.lab:9999
+      backends:
+      - host: aauth-service:8081
+    - name: sca-a2a-authed
+      matches:
+      - path:
+          exact: /
+        method: "POST"
+      policies:
+        extAuthz:
+          host: "aauth-service:7070"
+          protocol:
+            grpc:
+              context:
+                aauth_resource_id: "supply-chain-agent"
+        backendAuth:
+          passthrough: {}
+      backends:
+      - host: supply-chain-agent:9999
+    - name: sca-passthrough
+      policies:
+        backendAuth:
+          passthrough: {}
+      backends:
+      - host: supply-chain-agent:9999
+
+- port: 9998
+  listeners:
+  - routes:
+    - name: maa-aauth-discovery
+      matches:
+      - path:
+          exact: /.well-known/aauth-resource.json
+      - path:
+          exact: /.well-known/jwks.json
+      policies:
+        urlRewrite:
+          authority:
+            full: gateway.uma.lab:9998
+      backends:
+      - host: aauth-service:8081
+    - name: maa-a2a-authed
+      matches:
+      - path:
+          exact: /
+        method: "POST"
+      policies:
+        extAuthz:
+          host: "aauth-service:7070"
+          protocol:
+            grpc:
+              context:
+                aauth_resource_id: "market-analysis-agent"
+        backendAuth:
+          passthrough: {}
+      backends:
+      - host: market-analysis-agent:9998
+    - name: maa-passthrough
+      policies:
+        backendAuth:
+          passthrough: {}
+      backends:
+      - host: market-analysis-agent:9998

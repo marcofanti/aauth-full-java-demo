@@ -1,0 +1,30 @@
+# syntax=docker/dockerfile:1
+# The AAuth edge: agentgateway + aauth-service binaries (same pinned pair as
+# scripts/setup-gateway.sh). One image, role selected by the container command
+# ("gateway" or "aauth-service" via edge-entrypoint.sh).
+#
+# Base is eclipse-temurin:26-jre — heavier than a bare distro but already used by every
+# other image in this stack, glibc-based (the binaries need it), and it ships tar and
+# openssl so no package installs happen at build time (plain-HTTP apt mirrors are
+# blocked on some networks). Binary downloads use BuildKit ADD (HTTPS, host-side).
+FROM eclipse-temurin:26-jre
+ARG TARGETARCH
+ARG AGW_VERSION=0.11.4
+ARG EXTAUTH_VERSION=0.0.1
+
+ADD --chmod=755 \
+    https://github.com/christian-posta/agentgateway/releases/download/v${AGW_VERSION}/agentgateway-linux-${TARGETARCH} \
+    /usr/local/bin/agentgateway
+
+ADD https://github.com/christian-posta/extauth-aauth-resource/releases/download/v${EXTAUTH_VERSION}/extauth-aauth-resource_${EXTAUTH_VERSION}_linux_${TARGETARCH}.tar.gz \
+    /tmp/extauth.tar.gz
+RUN mkdir -p /tmp/extauth \
+    && tar -xzf /tmp/extauth.tar.gz -C /tmp/extauth \
+    && find /tmp/extauth -type f -name aauth-service -exec mv {} /usr/local/bin/aauth-service \; \
+    && chmod +x /usr/local/bin/aauth-service \
+    && rm -rf /tmp/extauth /tmp/extauth.tar.gz
+
+COPY aauth-full-java-demo/docker/edge-entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
+WORKDIR /work
+ENTRYPOINT ["/entrypoint.sh"]

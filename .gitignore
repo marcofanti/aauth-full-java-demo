@@ -12,3 +12,5 @@ dist/
 .aauth-demo/
 tools/
 runlocal.sh
+presentation/slides/
+presentation/

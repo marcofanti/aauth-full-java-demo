@@ -19,6 +19,25 @@ design decision deviates from the plan or from the Python reference.
 
 ## Decision log
 
+- 2026-08-02 — **Docker packaging** (post-plan): `docker-compose.yml` runs the complete
+  edge architecture (7 images, all built from source with the parent `agents/` dir as
+  build context + allowlist `.dockerignore`). Live-tested: identity and consent
+  variants, unsigned 401 at the edge, full chain with market-analysis hop, consent
+  approve via the containerized Java PS. Key decisions:
+  - The original "no Docker" rule is obsolete for this codebase: canonical authorities
+    come from config, and compose network aliases make `gateway.uma.lab` resolve to the
+    gateway container in-network — signed authority and reachable hostname agree.
+  - The Person Server runs as **`ps.localhost`** in compose: satisfies the Go
+    verifier's https-or-local-dev issuer rule via `*.localhost`, resolves through
+    compose DNS in-network, and browsers resolve `*.localhost` to loopback natively
+    (consent popup needs no /etc/hosts entry).
+  - Plain-HTTP apt mirrors can be blocked; the edge image avoids in-container package
+    installs entirely (temurin base already has tar/openssl, binaries fetched via
+    BuildKit `ADD` over HTTPS).
+  - agents keep container ports 9999/9998 (no clash across containers); the compose
+    gateway/aauth configs differ from `gateway/` only in backend hosts and the
+    `ps.localhost` issuer.
+
 - 2026-07-30 — Plan created. Clean-room reimplementation of `../aauth-full-demo`
   (unlicensed): architecture/flows only, no code or config copied.
 - 2026-07-30 — Hand-rolled `a2a-support` (minimal JSON-RPC + agent cards) instead of

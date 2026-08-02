@@ -1,0 +1,22 @@
+# syntax=docker/dockerfile:1
+# Builds one demo service (backend | supply-chain-agent | market-analysis-agent).
+# Context is the parent agents/ directory: the aauth-java-library is built from source
+# first since its snapshot artifacts exist in no remote repository.
+FROM maven:3.9-eclipse-temurin-26 AS build
+WORKDIR /src
+COPY aauth-java-library aauth-java-library
+COPY aauth-full-java-demo aauth-full-java-demo
+RUN --mount=type=cache,target=/root/.m2/repository \
+    mvn -q -f aauth-java-library/pom.xml -DskipTests install \
+    && mvn -q -f aauth-full-java-demo/pom.xml -DskipTests package
+ARG SERVICE
+RUN cp "aauth-full-java-demo/${SERVICE}/target/${SERVICE}-0.1.0-SNAPSHOT.jar" /app.jar
+
+FROM eclipse-temurin:26-jre
+ARG OTEL_VERSION=2.30.0
+ADD --chmod=644 \
+    https://github.com/open-telemetry/opentelemetry-java-instrumentation/releases/download/v${OTEL_VERSION}/opentelemetry-javaagent.jar \
+    /otel.jar
+COPY --from=build /app.jar /app.jar
+WORKDIR /work
+ENTRYPOINT ["java", "-javaagent:/otel.jar", "-jar", "/app.jar"]

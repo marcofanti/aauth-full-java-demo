@@ -52,6 +52,32 @@ The `integration-tests` module is skipped in normal `mvn verify` builds (it need
 services); the script enables it with the tag groups matching each mode, including the
 consent approval/denial flows driven through the Person Server's REST API.
 
+## Docker
+
+The full edge architecture also runs as containers — UI, backend, both agents, the
+agentgateway + aauth-service edge, the Java Person Server, and Jaeger:
+
+```bash
+docker compose up -d                             # identity enforcement (default)
+AAUTH_VARIANT=auth-token docker compose up -d    # or auth-token / consent
+docker compose down
+```
+
+Everything builds from source (the aauth-java-library and the sibling
+aauth-java-person-server are compiled inside the images; build context is the parent
+directory). Network aliases carry the demo hostnames in-network: the gateway container
+is `gateway.uma.lab`, the backend is `portal.uma.lab`, and the Person Server is
+`ps.localhost` — a `*.localhost` name satisfies the Go verifier's issuer rules *and*
+resolves to loopback in browsers with no /etc/hosts entry, so the consent popup at
+`http://ps.localhost:8765/ui/consent.html` just works. Agent registrations are
+auto-approved by a one-shot `approver` container; keys and the PS database live in
+named volumes, so identities survive restarts. From the host, everything is reachable
+on the same URLs as the native scripts (UI :3050, backend :8000, gateway :9999/:9998,
+PS :8765, Jaeger :16686).
+
+The native scripts remain the primary dev workflow; compose is for reproducible demos
+and CI.
+
 ## Tracing
 
 ```bash
