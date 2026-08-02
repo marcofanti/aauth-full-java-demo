@@ -4,8 +4,6 @@ import io.github.marcofanti.aauth.agent.TokenExchange;
 import io.github.marcofanti.aauth.demo.a2a.A2aClient;
 import io.github.marcofanti.aauth.demo.a2a.A2aClientException;
 import java.net.URI;
-import java.net.http.HttpClient;
-import java.time.Duration;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -55,15 +53,11 @@ public final class A2aAuthClient {
                 throw e;
             }
             log.info("Resource {} requires an auth token; exchanging at the Person Server", endpoint);
+            // Since aauth-java-library 0.1.1 the exchange's default client pins HTTP/1.1
+            // (the Person Server's h11 parser mishandles the JDK h2c upgrade).
             String exchanged = TokenExchange.exchangeResourceToken(
                     TokenExchange.Exchange.builder(resourceToken, identity.ephemeralKeyPair(), identity.agentToken())
                             .onInteraction(onInteraction)
-                            // The Person Server's HTTP/1.1 parser mishandles the h2c upgrade
-                            // the JDK client attempts by default; pin HTTP/1.1.
-                            .httpClient(HttpClient.newBuilder()
-                                    .version(HttpClient.Version.HTTP_1_1)
-                                    .connectTimeout(Duration.ofSeconds(30))
-                                    .build())
                             .build());
             authToken = exchanged;
             authTokenIdentity = identity;

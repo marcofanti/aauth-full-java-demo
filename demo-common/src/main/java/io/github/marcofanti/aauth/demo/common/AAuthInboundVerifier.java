@@ -6,7 +6,6 @@ import io.github.marcofanti.aauth.resource.ChallengeBuilder;
 import io.github.marcofanti.aauth.resource.RequestVerifier;
 import io.github.marcofanti.aauth.signing.JwksFetcher;
 import io.github.marcofanti.aauth.signing.Jwts;
-import io.github.marcofanti.aauth.signing.SignatureBase;
 import io.github.marcofanti.aauth.signing.SignatureKeyHeader;
 import io.github.marcofanti.aauth.signing.keys.Jwk;
 import java.net.URI;
@@ -128,16 +127,12 @@ public final class AAuthInboundVerifier {
         String effectivePath = path == null || path.isEmpty() ? "/" : path;
         String targetUri = canonicalBase.resolve(effectivePath).toString();
         boolean requireIdentity = requirement != Requirement.PSEUDONYM;
+        // Since aauth-java-library 0.1.1 the RequestVerifier enforces the RFC 9530
+        // body-vs-digest check itself; no demo-side re-verification needed.
         RequestVerifier.Result result =
                 verifier.verifyRequest(method, targetUri, headers, body, requireIdentity, false);
         if (!result.valid()) {
             return new Verification(Verification.Status.INVALID, null, null, result.error());
-        }
-        // The library (matching the Python reference) signs over the Content-Digest *header*
-        // but leaves RFC 9530 body-vs-digest enforcement to the resource. Do it here.
-        String declaredDigest = headerIgnoringCase(headers, "Content-Digest");
-        if (declaredDigest != null && body != null && !declaredDigest.equals(SignatureBase.contentDigest(body))) {
-            return new Verification(Verification.Status.INVALID, null, null, "Content-Digest does not match body");
         }
         if (requirement == Requirement.AUTH_TOKEN
                 && (result.scopes() == null || result.scopes().isEmpty())) {

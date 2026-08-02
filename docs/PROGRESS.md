@@ -19,6 +19,24 @@ design decision deviates from the plan or from the Python reference.
 
 ## Decision log
 
+- 2026-08-02 — **Adopt aauth-java-library 0.1.1**: the two demo findings are fixed
+  upstream — `RequestVerifier` now enforces the RFC 9530 body-vs-digest check itself,
+  and the library's default HTTP clients (`TokenExchange`, `CachingJwksFetcher`,
+  `Metadata`) pin HTTP/1.1. Demo and aauth-java-person-server pin `0.1.1`; the
+  demo-side digest re-check in `AAuthInboundVerifier` and the injected HTTP/1.1
+  client in `A2aAuthClient` are removed (`tamperedBodyIsRejected` now passes on the
+  library's enforcement alone). `io.github.marcofanti:aauth:0.1.1` resolves from
+  Maven Central, so the Docker builders' clone+install bridge is gone — both
+  Dockerfiles build straight from Central. Demo-owned HTTP clients
+  (`AgentBootstrap`, `ManagedIdentity`, integration tests) keep their explicit
+  HTTP/1.1 pins: they don't go through the library's defaults.
+
+- 2026-08-02 — **Consume the released library**: aauth-java-library v0.1.0 was released
+  (tag `v0.1.0`, published toward Maven Central via the central-publishing plugin).
+  Demo and aauth-java-person-server pinned `0.1.0` (no snapshot), with the Docker
+  builders cloning the GitHub tag as a bridge until Central propagation completed.
+  Superseded by the 0.1.1 adoption above.
+
 - 2026-08-02 — **Docker packaging** (post-plan): `docker-compose.yml` runs the complete
   edge architecture (7 images, all built from source with the parent `agents/` dir as
   build context + allowlist `.dockerignore`). Live-tested: identity and consent
@@ -74,6 +92,8 @@ design decision deviates from the plan or from the Python reference.
   never recompute the digest from the body — a tampered body with an intact header
   passes `verify_signature` in both. `AAuthInboundVerifier` recomputes and compares
   (`SignatureBase.contentDigest`). Worth considering as a library improvement.
+  *Resolved 2026-08-02: fixed upstream in aauth-java-library 0.1.1; the demo-side
+  check is removed (see the 0.1.1 adoption entry above).*
 
 - 2026-07-30 — **Phase 4 design notes**: the market-analysis agent does not register with
   the Person Server (it makes no outbound calls; identity would be unused). Mode is

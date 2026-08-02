@@ -1,12 +1,12 @@
 # syntax=docker/dockerfile:1
-# Builds the Java Person Server (../aauth-java-person-server) from source.
+# Builds the Java Person Server (../aauth-java-person-server) from source; the
+# aauth-java-library dependency (io.github.marcofanti:aauth:0.1.1) resolves from
+# Maven Central.
 FROM maven:3.9-eclipse-temurin-26 AS build
 WORKDIR /src
-COPY aauth-java-library aauth-java-library
 COPY aauth-java-person-server aauth-java-person-server
 RUN --mount=type=cache,target=/root/.m2/repository \
-    mvn -q -f aauth-java-library/pom.xml -DskipTests install \
-    && mvn -q -f aauth-java-person-server/pom.xml -DskipTests package
+    mvn -q -f aauth-java-person-server/pom.xml -DskipTests package
 RUN cp aauth-java-person-server/target/aauth-java-person-server-0.1.0-SNAPSHOT.jar /app.jar
 
 FROM eclipse-temurin:26-jre
