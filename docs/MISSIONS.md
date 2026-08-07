@@ -6,8 +6,10 @@ authority: the agent proposes it once, and every later action refers back to it 
 Person Server logs each decision against the mission, and actions outside the mission's
 approved tools defer to the user.
 
-Requires the Python Person Server (`../aauth-person-server`); the Java port has no
-mission endpoints.
+Both Person Server implementations serve the mission layer: the Java port
+(`../aauth-java-person-server`, the default for `AAUTH_PS_IMPL=java` and the Docker
+stack) implements `/mission`, `/permission`, `/audit`, and the mission log natively;
+the Python reference works too, with the permission hotfix noted below.
 
 ## Flow
 
@@ -53,7 +55,7 @@ curl -s -H 'Authorization: Bearer mytoken' \
 
 Integration tests: `scripts/run-tests.sh missions` (tag `missions`).
 
-## Adaptations to the upstream Person Server
+## Adaptations to the upstream (Python) Person Server
 
 - Mission proposals use the Person Server's default **auto-approve**: its deferred
   mission-approval path is not agent-pollable (`GET /pending/{id}` rejects mission

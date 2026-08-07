@@ -26,7 +26,7 @@ Run modes (`./scripts/run-demo.sh <mode>`):
 | `auth-token` | Agents demand `aa-auth+jwt`: 401 + resource token → autonomous Person Server exchange → retry |
 | `consent` | Like `auth-token`, but the supply-chain agent requires `require:user`: the Person Server defers until the user approves in the consent popup surfaced by the UI |
 | `edge` / `edge-auth` / `edge-consent` | The same three enforcement levels, but verified at the **agentgateway + aauth-service edge** (`scripts/setup-gateway.sh` once, then e.g. `./scripts/run-demo.sh edge-auth`): the gateway owns gateway.uma.lab:9999/:9998, agents run behind it with in-process verification off |
-| `missions` | `jwt` identity plus the Person Server's mission layer: the backend records a mission, in-scope steps auto-grant via `/permission` with no prompts, and an out-of-scope purchase step defers to the user — see [docs/MISSIONS.md](docs/MISSIONS.md) (Python PS only) |
+| `missions` | `jwt` identity plus the Person Server's mission layer: the backend records a mission, in-scope steps auto-grant via `/permission` with no prompts, and an out-of-scope purchase step defers to the user — see [docs/MISSIONS.md](docs/MISSIONS.md) |
 
 Mode semantics: [docs/MODES.md](docs/MODES.md) · consent sequence:
 [docs/CONSENT_FLOW.md](docs/CONSENT_FLOW.md)
@@ -158,4 +158,4 @@ signatures (with `Content-Digest` coverage) verify cleanly.
 
 ## License
 
-MIT — see [LICENSE](LICENSE).
+Apache License 2.0 — see [LICENSE](LICENSE).

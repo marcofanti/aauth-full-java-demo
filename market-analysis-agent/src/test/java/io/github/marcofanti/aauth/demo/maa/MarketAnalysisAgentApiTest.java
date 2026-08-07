@@ -17,15 +17,14 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.TestPropertySource;
 
 /**
- * Runs on a fixed port so the AAuth canonical authority ({@code gateway.uma.lab:19998},
+ * Runs on a fixed port so the AAuth canonical authority ({@code localhost:19998},
  * resolving to 127.0.0.1) matches what clients sign.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.DEFINED_PORT)
-@TestPropertySource(
-        properties = {"server.port=19998", "demo.agent-url=http://gateway.uma.lab:19998/", "demo.aauth.mode=hwk"})
+@TestPropertySource(properties = {"server.port=19998", "demo.agent-url=http://localhost:19998/", "demo.aauth.mode=hwk"})
 class MarketAnalysisAgentApiTest {
 
-    private static final URI BASE = URI.create("http://gateway.uma.lab:19998/");
+    private static final URI BASE = URI.create("http://localhost:19998/");
 
     private final AAuthClientSigner signer = AAuthClientSigner.ephemeral();
 
@@ -57,7 +56,7 @@ class MarketAnalysisAgentApiTest {
         assertThat(response.statusCode()).isEqualTo(200);
         AgentCard card = A2aJson.parse(response.body(), AgentCard.class);
         assertThat(card.name()).isEqualTo("Market Analysis Agent");
-        assertThat(card.url()).isEqualTo("http://gateway.uma.lab:19998/");
+        assertThat(card.url()).isEqualTo("http://localhost:19998/");
     }
 
     @Test

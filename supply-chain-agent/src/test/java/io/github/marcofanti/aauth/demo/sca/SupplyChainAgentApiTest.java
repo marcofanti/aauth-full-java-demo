@@ -15,7 +15,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.TestPropertySource;
 
 /**
- * Fixed port so the AAuth canonical authority ({@code gateway.uma.lab:19999}, resolving to
+ * Fixed port so the AAuth canonical authority ({@code localhost:19999}, resolving to
  * 127.0.0.1) matches what clients sign. The market-analysis URL is unreachable on purpose to
  * cover the non-fatal fallback of the second hop.
  */
@@ -23,13 +23,13 @@ import org.springframework.test.context.TestPropertySource;
 @TestPropertySource(
         properties = {
             "server.port=19999",
-            "demo.agent-url=http://gateway.uma.lab:19999/",
+            "demo.agent-url=http://localhost:19999/",
             "demo.market-analysis-url=http://127.0.0.1:1/",
             "demo.aauth.mode=hwk"
         })
 class SupplyChainAgentApiTest {
 
-    private static final URI BASE = URI.create("http://gateway.uma.lab:19999/");
+    private static final URI BASE = URI.create("http://localhost:19999/");
 
     private final AAuthClientSigner signer = AAuthClientSigner.ephemeral();
 

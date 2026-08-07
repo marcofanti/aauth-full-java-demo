@@ -13,7 +13,7 @@
 #         behind the gateway with in-process verification off
 #   missions — jwt identity plus the Person Server's mission layer: the backend records
 #         a mission, in-scope steps auto-grant via /permission with no prompts, and an
-#         out-of-scope purchase step defers to the user (Python PS only)
+#         out-of-scope purchase step defers to the user
 # Pending registrations are auto-approved via the Person Server's /person API.
 # Requires jars built via: mvn -DskipTests package
 set -euo pipefail
@@ -80,14 +80,11 @@ if [[ -f ${pid_file} ]]; then
   exit 1
 fi
 
-# The Java Person Server has no mission endpoints; missions mode needs the Python one.
 # Mission creation stays on the PS default (auto-approve): its deferred-approval path is
 # not agent-pollable (GET /pending rejects mission pendings), so the user-consent moment
-# in this mode is the out-of-scope permission check, which polls fine.
-if [[ -n ${mission_layer} && ${AAUTH_PS_IMPL:-python} == "java" ]]; then
-  echo "ERROR: missions mode needs the Python Person Server (the Java port has no mission layer)." >&2
-  exit 1
-fi
+# in this mode is the out-of-scope permission check, which polls fine. Both PS
+# implementations serve the full mission layer; the Java port needs no permission hotfix
+# (its /permission deferred branch is handled natively).
 
 if [[ ${mode} != "off" && ${mode} != "hwk" ]]; then
   current_origin="$(curl -sf --max-time 2 "http://127.0.0.1:8765/.well-known/aauth-agent.json" |
