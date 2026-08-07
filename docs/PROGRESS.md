@@ -30,9 +30,25 @@ design decision deviates from the plan or from the Python reference.
   `scripts/portal_hotfixes.py` (renamed from `portal_permission_hotfix.py`, now two
   fixes) registers `Ed25519` with PyJWT and widens the allowlist at runtime.
   Verified locally: 6/6 modes vs the Java PS (main, pinned 0.2.3) and 6/6 vs the
-  Python PS. Edge modes and the Docker default variant remain incompatible with
-  0.2.x — the Go verifier (extauth-aauth-resource v0.0.1, no commits since May)
-  predates draft-10; needs an upstream update or a pre-draft-10 pin.
+  Python PS.
+
+- 2026-08-07 — **Draft-10 loose ends closed** (both directions of the alg gap):
+  - Upstream Python fix on a branch (`aauth-python-library`
+    `fix/accept-draft10-ed25519-alg`): register `Ed25519` with PyJWT, accept it
+    wherever `EdDSA` was accepted, and broaden verify catches so a disallowed alg is
+    a `TokenError` (4xx) instead of an uncaught 500. The demo's `portal_hotfixes.py`
+    stays until that lands in a release.
+  - Edge narrowed and fixed: all three edge variants pass with 0.2.3 **and the
+    Python PS** out of the box (it still mints `EdDSA`). With the **Java PS** the Go
+    verifier failed on draft-10 tokens (`invalid jwa.SignatureAlgorithm value` for
+    `alg: Ed25519`). Root cause is in `aauth-go-library`, fixed on its
+    `fix/accept-draft10-ed25519-alg` branch (register `Ed25519` with jwx, backed by
+    the EdDSA verifier + test); `extauth-aauth-resource` needs no code change, only
+    a dependency bump on release. Live-verified: edge + Java PS completes with an
+    `aauth-service` built against the patched library — that patched binary now
+    sits in `tools/` (note: `setup-gateway.sh` re-downloads the unpatched v0.0.1
+    release, and the compose edge images do too, so compose edge + Java PS stays
+    broken until upstream releases; compose with the python-ps override works).
 
 - 2026-08-02 — **Missions mode** (post-plan): `run-demo.sh missions` = `jwt` identity
   plus the Person Server's mission layer. Backend proposes a mission (approved tools:
