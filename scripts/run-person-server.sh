@@ -59,10 +59,10 @@ if [[ ${impl} == "java" ]]; then
   (cd "${ps_repo}" && exec java -jar "${jar}" --server.port=8765 --server.address=127.0.0.1) \
     >"${log_dir}/person-server.log" 2>&1 &
 else
-  # portal_permission_hotfix wraps the portal app to fix its deferred /permission
-  # handling (upstream 500s on out-of-scope mission permission checks).
+  # portal_hotfixes wraps the portal app: deferred /permission handling and
+  # draft-10 Ed25519 alg tolerance (see the module docstring).
   (cd "${ps_repo}" && PYTHONPATH="${repo_root}/scripts${PYTHONPATH:+:${PYTHONPATH}}" \
-    exec .venv/bin/uvicorn portal_permission_hotfix:app --host 127.0.0.1 --port 8765) \
+    exec .venv/bin/uvicorn portal_hotfixes:app --host 127.0.0.1 --port 8765) \
     >"${log_dir}/person-server.log" 2>&1 &
 fi
 echo "$!" >"${pid_file}"

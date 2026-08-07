@@ -1,12 +1,12 @@
 # syntax=docker/dockerfile:1
 # Builds the Python Person Server reference (../aauth-person-server) from source, for the
 # cross-implementation compose variant (docker/compose.python-ps.yml). The demo's
-# portal_permission_hotfix wrapper is included so deferred /permission checks work
-# (the upstream portal app 500s on them; see scripts/portal_permission_hotfix.py).
+# portal_hotfixes wrapper is included so deferred /permission checks work
+# (the upstream portal app 500s on them; see scripts/portal_hotfixes.py).
 FROM python:3.12-slim
 WORKDIR /app
 COPY aauth-person-server /app
-COPY aauth-full-java-demo/scripts/portal_permission_hotfix.py /hotfix/portal_permission_hotfix.py
+COPY aauth-full-java-demo/scripts/portal_hotfixes.py /hotfix/portal_hotfixes.py
 RUN --mount=type=cache,target=/root/.cache/pip pip install --quiet .
 ENV PYTHONPATH=/hotfix
-ENTRYPOINT ["uvicorn", "portal_permission_hotfix:app", "--host", "0.0.0.0", "--port", "8765"]
+ENTRYPOINT ["uvicorn", "portal_hotfixes:app", "--host", "0.0.0.0", "--port", "8765"]

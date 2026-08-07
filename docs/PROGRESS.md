@@ -19,6 +19,21 @@ design decision deviates from the plan or from the Python reference.
 
 ## Decision log
 
+- 2026-08-07 — **Adopt aauth-java-library 0.2.3 (AAuth draft-10)**: 0.2.x signs with
+  fully-specified `alg: Ed25519` (RFC 9864) and adds the agent-token `ps` claim. The
+  first bump (0.2.1) broke both CI matrix legs — the matrix doing its job:
+  (java leg) 0.2.1's `ps`-claim check rejected plain-http dev origins, fixed upstream
+  in 0.2.2; (python leg) the Python PS's `EdDSA` JWKs were rejected by draft-10
+  verification, fixed upstream in 0.2.3 (legacy-`EdDSA` tolerance). The reverse
+  direction needed a demo-side fix: the Python library's `verify_resource_token`
+  allows only `EdDSA` and 500s on draft-10 `Ed25519` tokens, so
+  `scripts/portal_hotfixes.py` (renamed from `portal_permission_hotfix.py`, now two
+  fixes) registers `Ed25519` with PyJWT and widens the allowlist at runtime.
+  Verified locally: 6/6 modes vs the Java PS (main, pinned 0.2.3) and 6/6 vs the
+  Python PS. Edge modes and the Docker default variant remain incompatible with
+  0.2.x — the Go verifier (extauth-aauth-resource v0.0.1, no commits since May)
+  predates draft-10; needs an upstream update or a pre-draft-10 pin.
+
 - 2026-08-02 — **Missions mode** (post-plan): `run-demo.sh missions` = `jwt` identity
   plus the Person Server's mission layer. Backend proposes a mission (approved tools:
   `supply-chain:optimize`, `market-analysis:analyze`), gates each step via signed
@@ -29,7 +44,7 @@ design decision deviates from the plan or from the Python reference.
   deny and approve paths, full PS mission log. Two upstream gaps found (Python PS):
   deferred mission proposals aren't agent-pollable (`GET /pending` 404s on mission
   pendings) — so mission creation stays auto-approved; and the portal app 500s on
-  deferred permission checks — fixed at runtime by `scripts/portal_permission_hotfix.py`
+  deferred permission checks — fixed at runtime by `scripts/portal_hotfixes.py`
   (wraps the app, no upstream edits). Both worth reporting upstream. Java PS has no
   mission endpoints; missions mode requires the Python PS. See docs/MISSIONS.md.
 

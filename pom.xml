@@ -34,7 +34,7 @@
 
     <spring-boot.version>4.1.0</spring-boot.version>
     <jackson2.version>2.19.0</jackson2.version>
-    <aauth-library.version>0.2.1</aauth-library.version>
+    <aauth-library.version>0.2.3</aauth-library.version>
 
     <maven-compiler-plugin.version>3.15.0</maven-compiler-plugin.version>
     <maven-surefire-plugin.version>3.5.6</maven-surefire-plugin.version>

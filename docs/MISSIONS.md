@@ -63,6 +63,6 @@ Integration tests: `scripts/run-tests.sh missions` (tag `missions`).
   out-of-scope permission check, which polls fine. `MissionClient` already handles a
   deferred proposal (202 → consent → poll) should upstream add the poll route.
 - The portal app 500s on deferred permission checks (it misses the `DeferredResponse`
-  branch its standalone PS app handles). `scripts/portal_permission_hotfix.py` rewires
+  branch its standalone PS app handles). `scripts/portal_hotfixes.py` rewires
   the running app at startup — no upstream files are modified; see the module docstring.
   Both gaps are worth reporting upstream.
