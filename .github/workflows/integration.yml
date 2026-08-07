@@ -10,9 +10,15 @@ permissions: {}
 
 jobs:
   mode-matrix:
-    # Runs the live 5-mode matrix (off/hwk/jwt/auth-token/consent) against the
-    # public Python Person Server reference. Edge modes need the agentgateway
+    # Runs the live 6-mode matrix (off/hwk/jwt/auth-token/consent/missions) against
+    # BOTH Person Server implementations — the Python reference and the Java port —
+    # as a cross-implementation conformance check. Edge modes need the agentgateway
     # binaries and are exercised locally, not here.
+    strategy:
+      fail-fast: false
+      matrix:
+        ps-impl: [python, java]
+    name: modes (${{ matrix.ps-impl }}-ps)
     runs-on: ubuntu-latest
     timeout-minutes: 45
     permissions:
@@ -23,9 +29,16 @@ jobs:
           path: aauth-full-java-demo
           persist-credentials: false
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: matrix.ps-impl == 'python'
         with:
           repository: christian-posta/aauth-person-server
           path: aauth-person-server
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: matrix.ps-impl == 'java'
+        with:
+          repository: marcofanti/aauth-java-person-server
+          path: aauth-java-person-server
           persist-credentials: false
       - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5.7.0
         with:
@@ -33,14 +46,17 @@ jobs:
           java-version: "26"
           cache: maven
       - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        if: matrix.ps-impl == 'python'
       - name: Map uma.lab hostnames to loopback
         run: echo "127.0.0.1 portal.uma.lab gateway.uma.lab ps.uma.lab" | sudo tee -a /etc/hosts
       - name: Run mode matrix
         working-directory: aauth-full-java-demo
+        env:
+          AAUTH_PS_IMPL: ${{ matrix.ps-impl }}
         run: ./scripts/run-tests.sh all
       - name: Upload service logs
         if: failure()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: service-logs
+          name: service-logs-${{ matrix.ps-impl }}
           path: aauth-full-java-demo/logs/
