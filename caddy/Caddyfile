@@ -1,0 +1,35 @@
+# Shared local HTTPS front for the AAuth demos (aauth-full-java-demo and
+# aauth-java-person-server ship this same file). AAuth draft-11 identifiers must be
+# lowercase HTTPS origins without a port, so every identifier-bearing service sits behind
+# Caddy on :443 and listens on 127.0.0.1 only.
+#
+# Certificate: one mkcert cert for *.uma.lab, created by scripts/setup-tls.sh.
+# Start rule: if the admin API (localhost:2019) answers, Caddy is already running with this
+# config; never reload it from a script.
+# Caddy forwards the original Host header, so the signed @authority is the bare hostname.
+
+(uma_tls) {
+	tls {$HOME}/.local/share/uma-lab-tls/cert.pem {$HOME}/.local/share/uma-lab-tls/key.pem
+}
+
+# Person Server and its co-located Agent Server (one portal process; they differ by Host).
+ps.uma.lab {
+	import uma_tls
+	reverse_proxy 127.0.0.1:8765
+}
+
+as.uma.lab {
+	import uma_tls
+	reverse_proxy 127.0.0.1:8765
+}
+
+# Demo resources (A2A agents).
+sca.uma.lab {
+	import uma_tls
+	reverse_proxy 127.0.0.1:9999
+}
+
+maa.uma.lab {
+	import uma_tls
+	reverse_proxy 127.0.0.1:9998
+}
