@@ -37,20 +37,10 @@ public final class AAuthHttp {
         return HttpTransport.jdk(CLIENT);
     }
 
-    /**
-     * A JWKS fetcher (metadata discovery + 1-hour cache) over the demo client. Calls are
-     * serialized: {@link CachingJwksFetcher} records a fetch before performing it, so a
-     * concurrent cold-cache caller is refused by the per-issuer rate limit instead of waiting
-     * for the first fetch. Serialized, the second caller finds the cache warm.
-     */
+    /** A JWKS fetcher (metadata discovery + 1-hour cache) over the demo client. */
     public static JwksFetcher jwksFetcher() {
         CachingJwksFetcher caching =
                 new CachingJwksFetcher(new DefaultHttpClient(CLIENT), new JwksCache(), 60, Clock.systemUTC());
-        Object lock = new Object();
-        return (id, dwk, kid) -> {
-            synchronized (lock) {
-                return caching.fetch(id, kid, dwk);
-            }
-        };
+        return (id, dwk, kid) -> caching.fetch(id, kid, dwk);
     }
 }
