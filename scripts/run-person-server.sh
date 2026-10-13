@@ -56,7 +56,10 @@ export AAUTH_AS_AGENT_TOKEN_LIFETIME="${AAUTH_AS_AGENT_TOKEN_LIFETIME:-86400}"
 
 # exec so the recorded pid is the server itself, not a wrapper subshell.
 if [[ ${impl} == "java" ]]; then
-  (cd "${ps_repo}" && exec java -jar "${jar}" --server.port=8765 --server.address=127.0.0.1) \
+  # The PS calls https://*.uma.lab (resource metadata, JWKS): trust the mkcert root too.
+  truststore="${HOME}/.local/share/uma-lab-tls/truststore.p12"
+  (cd "${ps_repo}" && exec java -Djavax.net.ssl.trustStore="${truststore}" -Djavax.net.ssl.trustStorePassword=changeit \
+    -jar "${jar}" --server.port=8765 --server.address=127.0.0.1) \
     >"${log_dir}/person-server.log" 2>&1 &
 else
   # portal_hotfixes wraps the portal app: deferred /permission handling and
@@ -69,8 +72,8 @@ echo "$!" >"${pid_file}"
 echo "Started Person Server (${impl}, pid $!)"
 
 for _ in $(seq 1 30); do
-  if curl -sf -o /dev/null "http://${DEMO_PS_HOST}:8765/.well-known/aauth-agent.json"; then
-    echo "Person Server is up: http://${DEMO_PS_HOST}:8765"
+  if curl -sf -o /dev/null "http://127.0.0.1:8765/.well-known/aauth-person.json"; then
+    echo "Person Server is up: ${AAUTH_PS_PUBLIC_ORIGIN} (listening on 127.0.0.1:8765)"
     exit 0
   fi
   sleep 1

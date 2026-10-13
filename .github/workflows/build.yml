@@ -22,5 +22,15 @@ jobs:
           distribution: temurin
           java-version: "26"
           cache: maven
+      # Until aauth-java-library 0.3.0 (draft-11) is on Maven Central, build it from its
+      # draft11 branch. Remove this step and the checkout below once the release lands.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: marcofanti/aauth-java-library
+          ref: draft11
+          path: aauth-java-library
+          persist-credentials: false
+      - name: Install aauth-java-library 0.3.0-SNAPSHOT
+        run: mvn --batch-mode -q -f aauth-java-library/pom.xml -DskipTests install
       - name: Build and test
         run: mvn --batch-mode verify
