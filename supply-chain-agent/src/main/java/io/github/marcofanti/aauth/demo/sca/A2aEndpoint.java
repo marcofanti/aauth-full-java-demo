@@ -60,15 +60,18 @@ public class A2aEndpoint {
                     log.warn("Rejected A2A request: {}", verification.error());
                     return unauthorized(verifier.challenge(), verification.error());
                 }
+                case NEEDS_PERSON_TOKEN -> {
+                    log.info("Agent {} presented its agent token; asking for a person token", verification.agentId());
+                    return unauthorized(verifier.personTokenChallenge(), verification.error());
+                }
                 case NEEDS_AUTH_TOKEN -> {
-                    log.info("Caller {} needs an auth token; issuing resource-token challenge", verification.agentId());
-                    return unauthorized(
-                            verifier.authTokenChallenge(headers, verification.agentId()), verification.error());
+                    log.info("Person {} needs an auth token; issuing resource-token challenge", verification.personSub());
+                    return unauthorized(verifier.authTokenChallenge(headers), verification.error());
                 }
                 case VALID ->
                     log.info(
-                            "A2A request verified: agent={} scopes={}",
-                            verification.agentId() == null ? "(pseudonymous)" : verification.agentId(),
+                            "A2A request verified: caller={} scopes={}",
+                            callerOf(verification),
                             verification.scopes());
             }
         }
@@ -93,6 +96,13 @@ public class A2aEndpoint {
         String report = optimizer.optimize(text);
         return A2aJson.toJson(JsonRpcResponse.success(
                 request.id(), A2aMessage.agentText(UUID.randomUUID().toString(), report)));
+    }
+
+    private static String callerOf(AAuthInboundVerifier.Verification verification) {
+        if (verification.agentId() != null) {
+            return verification.agentId();
+        }
+        return verification.personSub() == null ? "(pseudonymous)" : "person " + verification.personSub();
     }
 
     private static ResponseEntity<String> unauthorized(ChallengeBuilder.Challenge challenge, String detail) {

@@ -173,6 +173,15 @@ else
 fi
 start_service backend "${backend_mode}" "${backend_flags[@]}"
 
+# Draft-11: the first person token an agent requests for a resource needs the person's
+# approval. Approve those automatically (they are not the consent this demo showcases);
+# require:user consent on the exchange still waits for a human in consent modes.
+if [[ ${mode} != "off" && ${mode} != "hwk" ]]; then
+  "${repo_root}/scripts/approve-person-tokens.sh" "${ps_origin}" "${person_token}" \
+    >"${log_dir}/person-token-approver.log" 2>&1 &
+  echo "$! person-token-approver" >>"${pid_file}"
+fi
+
 for _ in $(seq 1 60); do
   if [[ ${mode} != "off" && ${mode} != "hwk" ]]; then
     approve_pending_registrations
