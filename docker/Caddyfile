@@ -1,0 +1,29 @@
+# HTTPS front for the compose stack: the same *.uma.lab identifiers as the native demo
+# (caddy/Caddyfile), proxied to compose services instead of loopback ports. The caddy
+# container carries the four names as network aliases, so services reach each other
+# through it in-network, and it publishes :443 for the browser. Caddy forwards the
+# original Host header, so the signed @authority is the bare hostname.
+
+(uma_tls) {
+	tls /tls/cert.pem /tls/key.pem
+}
+
+ps.uma.lab {
+	import uma_tls
+	reverse_proxy person-server:8765
+}
+
+as.uma.lab {
+	import uma_tls
+	reverse_proxy person-server:8765
+}
+
+sca.uma.lab {
+	import uma_tls
+	reverse_proxy supply-chain-agent:9999
+}
+
+maa.uma.lab {
+	import uma_tls
+	reverse_proxy market-analysis-agent:9998
+}

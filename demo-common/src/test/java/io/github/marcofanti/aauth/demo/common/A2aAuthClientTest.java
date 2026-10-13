@@ -192,4 +192,39 @@ class A2aAuthClientTest {
                 .satisfies(e -> assertThat(e.statusCode()).isEqualTo(401));
         assertThat(ps.personTokenRequests.get()).isZero();
     }
+
+    @Test
+    void identityOnlyResourceMakesTheClientDropItsAuthToken() throws Exception {
+        Map<String, AtomicInteger> calls = stubDraft11Resource();
+        AgentBootstrap.Identity fixed = identity();
+        A2aAuthClient client = client(() -> fixed);
+        client.sendText("first", null); // caches an auth token
+
+        // The resource is reconfigured to identity level: auth tokens get requirement=agent-token.
+        resource.removeContext("/");
+        AtomicReference<String> servedTyp = new AtomicReference<>();
+        resource.createContext("/", exchange -> {
+            try (exchange) {
+                String token = String.valueOf(
+                        SignatureKeyHeader.parse(exchange.getRequestHeaders().getFirst("Signature-Key"))
+                                .params()
+                                .get("jwt"));
+                String typ = String.valueOf(Jwts.parse(token).header().get("typ"));
+                if (AgentTokens.TYPE.equals(typ)) {
+                    servedTyp.set(typ);
+                    respond(
+                            exchange,
+                            200,
+                            Map.of("Content-Type", "application/json"),
+                            A2aJson.toJson(JsonRpcResponse.success("1", A2aMessage.agentText("m", "identity ok"))));
+                } else {
+                    respond(exchange, 401, Map.of("AAuth-Requirement", "requirement=agent-token"), "{}");
+                }
+            }
+        });
+
+        assertThat(client.sendText("second", null)).isEqualTo("identity ok");
+        assertThat(servedTyp.get()).isEqualTo(AgentTokens.TYPE);
+        assertThat(calls.get(AuthTokens.TYPE).get()).isEqualTo(1);
+    }
 }

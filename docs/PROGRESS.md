@@ -19,6 +19,23 @@ design decision deviates from the plan or from the Python reference.
 
 ## Decision log
 
+- 2026-10-13 — **Docker stack on draft-11**: compose mirrors the native topology. A
+  `caddy` container (pinned by digest) terminates TLS for `ps`, `as`, `sca` and
+  `maa.uma.lab` with the shared mkcert certificate and carries those names as network
+  aliases, so containers reach each other at their AAuth identifiers through it; it
+  publishes :443 for the browser. Java containers trust the mkcert root via
+  `JAVA_TOOL_OPTIONS` and the shared truststore. `scripts/compose-up.sh <mode>` maps run
+  modes to per-service modes like `run-demo.sh`; the `approver` container approves
+  registrations and first-use person tokens. Removed: the edge containers and their
+  Dockerfile/configs (no draft-11 verifier) and the Python-PS compose override (it could
+  serve only off/hwk). The market-analysis agent gained its missing key volume, so its
+  resource key now survives restarts. Live-verified in compose: consent (with the
+  market-analysis hop), missions and hwk.
+  - Found while switching modes on a running stack: the backend kept a cached auth
+    token after the supply-chain agent dropped to `jwt`, and that agent's
+    `requirement=agent-token` challenge was unhandled. `A2aAuthClient` now drops the
+    cached auth token and retries with the agent token (regression test included).
+
 - 2026-10-13 — **AAuth draft-11** (branch `draft11`, on `aauth-java-library` 0.3.0, strict):
   - Flow: agent token → `requirement=person-token` → person token from the PS
     (`/person-token`) → resource token derived from that person token → `/auth-token`

@@ -140,7 +140,7 @@ the domain already costs.
 | Proxy rewrites `Host` → every signature fails | Caddy preserves Host by default; phase-1 local rehearsal catches regressions |
 | A canonical base keeps its `:port` → authority mismatch only in live | All live origins flow from `DEMO_DOMAIN` in one `.env`; no hand-edited duplicates |
 | PS behind https but told its origin is http → issuer mismatch in every minted token | `AAUTH_PS_PUBLIC_ORIGIN` is part of the same `.env`, set once |
-| Java PS lacks mission endpoints | Live missions variant = `compose.python-ps.yml` (hotfix baked in); or skip missions live |
+| Missions live | The Java PS serves the mission layer; `./scripts/compose-up.sh missions` |
 | Public `/optimization/start` abused | Caddy rate limit + JVM memory caps |
 | Anyone registers an agent | Manual approval in live (auto-approver off) |
 | Cert renewal breaks silently | Caddy volume + healthcheck cron hitting https |
@@ -151,7 +151,7 @@ the domain already costs.
    file); `ps.demo.itnaf.org` etc. would work. Or a dedicated cheap domain.
 2. **Provider** — Hetzner (cheapest), DigitalOcean, or an existing VM you already run.
 3. **Public enforcement mode** — recommend `consent` as the default story
-   (identity + exchange + human approval, the full pitch), with `AAUTH_VARIANT` still
+   (identity + exchange + human approval, the full pitch), with the compose run mode still
    switchable. Edge and missions variants can come later.
 4. **Which PS live** — Java (core protocol, our code end-to-end) vs Python
    (enables missions). Recommend Java first; the python-ps override is one flag away.
