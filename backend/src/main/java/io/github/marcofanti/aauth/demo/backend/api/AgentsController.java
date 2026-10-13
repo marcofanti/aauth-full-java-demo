@@ -21,8 +21,8 @@ public class AgentsController {
 
     public AgentsController(
             ActivityService activities,
-            @Value("${demo.supply-chain-url:http://gateway.uma.lab:9999/}") String supplyChainUrl,
-            @Value("${demo.market-analysis-url:http://gateway.uma.lab:9998/}") String marketAnalysisUrl) {
+            @Value("${demo.supply-chain-url:https://sca.uma.lab/}") String supplyChainUrl,
+            @Value("${demo.market-analysis-url:https://maa.uma.lab/}") String marketAnalysisUrl) {
         this.activities = activities;
         this.agents = List.of(
                 new AgentInfo("supply-chain-agent", supplyChainUrl, "configured"),

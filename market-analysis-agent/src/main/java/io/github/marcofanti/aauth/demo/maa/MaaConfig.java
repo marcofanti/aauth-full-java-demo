@@ -20,15 +20,17 @@ public class MaaConfig {
     @Bean
     @ConditionalOnExpression("'${demo.aauth.mode:hwk}'.matches('hwk|jwt|auth-token|consent')")
     public AAuthInboundVerifier inboundVerifier(
-            @Value("${demo.agent-url:http://gateway.uma.lab:9998/}") String agentUrl,
+            @Value("${demo.agent-url:https://maa.uma.lab/}") String agentUrl,
             @Value("${demo.aauth.mode:hwk}") String mode,
             @Value("${demo.aauth.scope:market-analysis:analyze}") String scope,
+            @Value("${demo.person-server-url:https://ps.uma.lab}") String personServerUrl,
             @Value("${demo.aauth.key-dir:.aauth-demo}") String keyDirectory,
             @Value("${spring.application.name}") String serviceName) {
         return AAuthInboundVerifier.forMode(
                 URI.create(agentUrl),
                 mode,
                 scope,
+                personServerUrl,
                 StableKeys.loadOrCreate(Path.of(keyDirectory), serviceName + "-resource"),
                 "maa-rsk-1");
     }

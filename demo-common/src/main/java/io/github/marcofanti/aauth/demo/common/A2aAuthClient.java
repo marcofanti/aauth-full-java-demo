@@ -5,6 +5,8 @@ import io.github.marcofanti.aauth.agent.TokenExchange;
 import io.github.marcofanti.aauth.demo.a2a.A2aClient;
 import io.github.marcofanti.aauth.demo.a2a.A2aClientException;
 import io.github.marcofanti.aauth.headers.AAuthHeaders;
+import io.github.marcofanti.aauth.http.HttpTransport;
+import io.github.marcofanti.aauth.signing.JwksFetcher;
 import io.github.marcofanti.aauth.signing.Jwts;
 import java.net.URI;
 import java.util.List;
@@ -41,14 +43,38 @@ public final class A2aAuthClient {
     private final URI endpoint;
     private final String resource;
     private final Supplier<AgentBootstrap.Identity> identitySupplier;
+    private final HttpTransport transport;
+    private final JwksFetcher jwksFetcher;
     private final PersonTokenCache personTokens = new PersonTokenCache();
     private volatile String authToken;
     private volatile AgentBootstrap.Identity tokensIssuedFor;
 
+    /** Production client: the endpoint URL is also the resource identifier. */
     public A2aAuthClient(URI endpoint, Supplier<AgentBootstrap.Identity> identitySupplier) {
+        this(
+                endpoint,
+                trimTrailingSlash(endpoint.toString()),
+                identitySupplier,
+                AAuthHttp.transport(),
+                AAuthHttp.jwksFetcher());
+    }
+
+    /**
+     * @param resource the resource identifier ({@code https} origin) the endpoint serves
+     * @param transport carries Person Server calls
+     * @param jwksFetcher resolves token issuers' keys
+     */
+    A2aAuthClient(
+            URI endpoint,
+            String resource,
+            Supplier<AgentBootstrap.Identity> identitySupplier,
+            HttpTransport transport,
+            JwksFetcher jwksFetcher) {
         this.endpoint = endpoint;
-        this.resource = trimTrailingSlash(endpoint.toString());
+        this.resource = resource;
         this.identitySupplier = identitySupplier;
+        this.transport = transport;
+        this.jwksFetcher = jwksFetcher;
     }
 
     public String sendText(String text, BiConsumer<String, String> onInteraction) throws A2aClientException {
@@ -83,11 +109,9 @@ public final class A2aAuthClient {
         if (challenge.resourceToken() != null) {
             log.info("Resource {} requires an auth token; exchanging at the Person Server", resource);
             String exchanged = TokenExchange.exchangeResourceToken(
-                    TokenExchange.Exchange.builder(
-                                    challenge.resourceToken(), identity.ephemeralKeyPair(), identity.agentToken())
-                            .presentedToken(presented)
-                            .onInteraction(onInteraction)
-                            .build());
+                    agent(identity, onInteraction),
+                    TokenExchange.AuthTokenRequest.of(
+                            challenge.resourceToken(), presented, resource, personServerOf(identity.agentToken())));
             authToken = exchanged;
             log.info("Obtained auth token for {}; retrying", resource);
             return exchanged;
@@ -105,21 +129,22 @@ public final class A2aAuthClient {
         if (cached != null) {
             return cached;
         }
-        String issued = TokenExchange.requestPersonToken(new TokenExchange.PersonTokenRequest(
-                        personServerOf(identity.agentToken()),
-                        resource,
-                        identity.ephemeralKeyPair(),
-                        identity.agentToken(),
-                        null,
-                        CAPABILITIES,
-                        null,
-                        null,
-                        0,
-                        null))
-                .personToken();
+        String issued = TokenExchange.requestPersonToken(
+                agent(identity, null),
+                personServerOf(identity.agentToken()),
+                resource,
+                null,
+                Map.of("capabilities", CAPABILITIES));
         personTokens.put(resource, null, issued);
         log.info("Obtained person token for {}", resource);
         return issued;
+    }
+
+    private TokenExchange.Agent agent(AgentBootstrap.Identity identity, BiConsumer<String, String> onInteraction) {
+        return TokenExchange.Agent.builder(identity.ephemeralKeyPair(), identity.agentToken(), jwksFetcher)
+                .transport(transport)
+                .onInteraction(onInteraction)
+                .build();
     }
 
     private void dropTokensIfRotated(AgentBootstrap.Identity identity) {
@@ -149,7 +174,8 @@ public final class A2aAuthClient {
             return null;
         }
         for (Map.Entry<String, List<String>> entry : e.responseHeaders().entrySet()) {
-            if ("AAuth-Requirement".equalsIgnoreCase(entry.getKey()) && !entry.getValue().isEmpty()) {
+            if ("AAuth-Requirement".equalsIgnoreCase(entry.getKey())
+                    && !entry.getValue().isEmpty()) {
                 return AAuthHeaders.parseAAuthHeader(entry.getValue().get(0));
             }
         }

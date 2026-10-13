@@ -51,7 +51,8 @@ class MissionServiceTest {
         }
     }
 
-    private static final MissionClient.Mission MISSION = new MissionClient.Mission("aauth:alice@ps.test", "abc123");
+    private static final MissionClient.Mission MISSION =
+            new MissionClient.Mission("Mo9Q7RtDOg55Vtpg0_lc-whFiqLrJqbsivwJHsy1za0");
 
     private final MissionClient missions = mock(MissionClient.class);
     private final ExecutorService executor = new DirectExecutor();
@@ -74,7 +75,7 @@ class MissionServiceTest {
 
         MissionRecord record = service.get(missionId).orElseThrow();
         assertThat(record.status()).isEqualTo(MissionStatus.COMPLETED);
-        assertThat(record.missionS256()).isEqualTo("abc123");
+        assertThat(record.missionS256()).isEqualTo("Mo9Q7RtDOg55Vtpg0_lc-whFiqLrJqbsivwJHsy1za0");
         assertThat(record.steps())
                 .containsExactly(
                         new MissionStep(MissionService.OPTIMIZE_ACTION, "laptop", "granted"),

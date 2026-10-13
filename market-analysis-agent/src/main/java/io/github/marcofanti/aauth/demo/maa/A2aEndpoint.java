@@ -44,7 +44,7 @@ public class A2aEndpoint {
 
     public A2aEndpoint(
             MarketAnalyzer analyzer,
-            @Value("${demo.agent-url:http://gateway.uma.lab:9998/}") String agentUrl,
+            @Value("${demo.agent-url:https://maa.uma.lab/}") String agentUrl,
             ObjectProvider<AAuthInboundVerifier> verifierProvider) {
         this.analyzer = analyzer;
         this.card = buildCard(agentUrl);
@@ -65,14 +65,14 @@ public class A2aEndpoint {
                     return unauthorized(verifier.personTokenChallenge(), verification.error());
                 }
                 case NEEDS_AUTH_TOKEN -> {
-                    log.info("Person {} needs an auth token; issuing resource-token challenge", verification.personSub());
+                    log.info(
+                            "Person {} needs an auth token; issuing resource-token challenge",
+                            verification.personSub());
                     return unauthorized(verifier.authTokenChallenge(headers), verification.error());
                 }
                 case VALID ->
                     log.info(
-                            "A2A request verified: caller={} scopes={}",
-                            callerOf(verification),
-                            verification.scopes());
+                            "A2A request verified: caller={} scopes={}", callerOf(verification), verification.scopes());
             }
         }
         return ResponseEntity.ok(dispatch(new String(body, StandardCharsets.UTF_8)));

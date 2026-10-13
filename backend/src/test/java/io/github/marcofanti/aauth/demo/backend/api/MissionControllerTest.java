@@ -41,7 +41,7 @@ class MissionControllerTest {
     private MissionService liveService() {
         MissionClient missions = mock(MissionClient.class);
         when(missions.propose(anyString(), anyMap(), any()))
-                .thenReturn(new MissionClient.Mission("aauth:alice@ps.test", "abc123"));
+                .thenReturn(new MissionClient.Mission("Mo9Q7RtDOg55Vtpg0_lc-whFiqLrJqbsivwJHsy1za0"));
         when(missions.permission(any(), anyString(), anyString(), anyMap(), any()))
                 .thenReturn(MissionClient.Permission.GRANTED);
         return new MissionService(missions, (prompt, onInteraction) -> "report", new ActivityService(), executor);
@@ -68,7 +68,7 @@ class MissionControllerTest {
         ProgressResponse progress =
                 (ProgressResponse) controller.progress(missionId).getBody();
         assertThat(progress.description()).isEqualTo("Optimize laptops");
-        assertThat(progress.missionS256()).isEqualTo("abc123");
+        assertThat(progress.missionS256()).isEqualTo("Mo9Q7RtDOg55Vtpg0_lc-whFiqLrJqbsivwJHsy1za0");
         assertThat(progress.steps())
                 .extracting(MissionDtos.StepResponse::action)
                 .contains("inventory:purchase");

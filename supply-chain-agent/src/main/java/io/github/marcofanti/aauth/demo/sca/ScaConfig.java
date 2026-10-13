@@ -29,13 +29,13 @@ public class ScaConfig {
 
     /** Registers with the Person Server at startup in every identity-carrying mode. */
     @Bean
-    @ConditionalOnExpression("'${demo.aauth.mode:hwk}'.matches('jwt|auth-token|consent|edge')")
+    @ConditionalOnExpression("'${demo.aauth.mode:hwk}'.matches('jwt|auth-token|consent')")
     public ManagedIdentity agentIdentity(
-            @Value("${demo.person-server-url:http://ps.uma.lab:8765}") String personServerUrl,
+            @Value("${demo.agent-server-url:https://as.uma.lab}") String agentServerUrl,
             @Value("${demo.aauth.key-dir:.aauth-demo}") String keyDirectory,
             @Value("${spring.application.name}") String agentName) {
         return ManagedIdentity.register(new AgentBootstrap.Config(
-                URI.create(personServerUrl), Path.of(keyDirectory), agentName, Duration.ofMinutes(2)));
+                URI.create(agentServerUrl), Path.of(keyDirectory), agentName, Duration.ofMinutes(2)));
     }
 
     /**
@@ -45,7 +45,7 @@ public class ScaConfig {
      */
     @Bean
     public MarketAnalysisGateway marketAnalysisGateway(
-            @Value("${demo.market-analysis-url:http://gateway.uma.lab:9998/}") String marketAnalysisUrl,
+            @Value("${demo.market-analysis-url:https://maa.uma.lab/}") String marketAnalysisUrl,
             @Value("${demo.aauth.mode:hwk}") String mode,
             ObjectProvider<ManagedIdentity> identity) {
         URI endpoint = URI.create(marketAnalysisUrl);
@@ -65,15 +65,17 @@ public class ScaConfig {
     @Bean
     @ConditionalOnExpression("'${demo.aauth.mode:hwk}'.matches('hwk|jwt|auth-token|consent')")
     public AAuthInboundVerifier inboundVerifier(
-            @Value("${demo.agent-url:http://gateway.uma.lab:9999/}") String agentUrl,
+            @Value("${demo.agent-url:https://sca.uma.lab/}") String agentUrl,
             @Value("${demo.aauth.mode:hwk}") String mode,
             @Value("${demo.aauth.scope:supply-chain:optimize}") String scope,
+            @Value("${demo.person-server-url:https://ps.uma.lab}") String personServerUrl,
             @Value("${demo.aauth.key-dir:.aauth-demo}") String keyDirectory,
             @Value("${spring.application.name}") String serviceName) {
         return AAuthInboundVerifier.forMode(
                 URI.create(agentUrl),
                 mode,
                 scope,
+                personServerUrl,
                 StableKeys.loadOrCreate(Path.of(keyDirectory), serviceName + "-resource"),
                 "sca-rsk-1");
     }

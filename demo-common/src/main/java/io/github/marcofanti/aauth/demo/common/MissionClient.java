@@ -2,6 +2,8 @@ package io.github.marcofanti.aauth.demo.common;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.json.JsonMapper;
+import io.github.marcofanti.aauth.TokenException;
+import io.github.marcofanti.aauth.missions.Missions;
 import io.github.marcofanti.aauth.signing.SignRequest;
 import io.github.marcofanti.aauth.signing.SignatureScheme;
 import java.io.IOException;
@@ -17,8 +19,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.function.BiConsumer;
 import java.util.function.Supplier;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -34,8 +34,8 @@ import org.slf4j.LoggerFactory;
  */
 public final class MissionClient {
 
-    /** An approved mission, referenced by approver and content hash in later calls. */
-    public record Mission(String approver, String s256) {}
+    /** An approved mission, referenced by its content hash ({@code mission_s256}) in later calls. */
+    public record Mission(String s256) {}
 
     /** Terminal outcome of a permission check; a user denial is a result, not an error. */
     public enum Permission {
@@ -46,13 +46,13 @@ public final class MissionClient {
     private static final Logger log = LoggerFactory.getLogger(MissionClient.class);
     private static final JsonMapper MAPPER = JsonMapper.builder().build();
     private static final TypeReference<Map<String, Object>> OBJECT = new TypeReference<>() {};
-    private static final Pattern MISSION_HEADER_PARAM = Pattern.compile("(approver|s256)=\"([^\"]*)\"");
     private static final Duration DEFAULT_POLL_DELAY = Duration.ofSeconds(2);
 
     private final URI personServerBase;
     private final Supplier<AgentBootstrap.Identity> identitySupplier;
     private final Duration decisionTimeout;
     private final HttpClient http;
+    private volatile Map<String, Object> personServerMetadata;
 
     public MissionClient(URI personServerBase, Supplier<AgentBootstrap.Identity> identitySupplier) {
         this(personServerBase, identitySupplier, Duration.ofMinutes(5));
@@ -63,11 +63,7 @@ public final class MissionClient {
         this.personServerBase = personServerBase;
         this.identitySupplier = identitySupplier;
         this.decisionTimeout = decisionTimeout;
-        // The Person Server's HTTP/1.1 parser mishandles the JDK client's default h2c upgrade.
-        this.http = HttpClient.newBuilder()
-                .version(HttpClient.Version.HTTP_1_1)
-                .connectTimeout(Duration.ofSeconds(10))
-                .build();
+        this.http = AAuthHttp.client();
     }
 
     /**
@@ -80,7 +76,7 @@ public final class MissionClient {
         List<Map<String, String>> toolSpecs = new ArrayList<>();
         tools.forEach((name, toolDescription) -> toolSpecs.add(Map.of("name", name, "description", toolDescription)));
         byte[] body = toBytes(Map.of("description", description, "tools", toolSpecs));
-        HttpResponse<String> response = sendSigned("POST", personServerBase.resolve("/mission"), body);
+        HttpResponse<String> response = sendSigned("POST", endpoint("mission_endpoint"), body);
         return switch (response.statusCode()) {
             case 200 -> missionFrom(response);
             case 202 -> pollForMission(response, onInteraction);
@@ -106,8 +102,8 @@ public final class MissionClient {
         if (parameters != null && !parameters.isEmpty()) {
             request.put("parameters", parameters);
         }
-        request.put("mission", Map.of("approver", mission.approver(), "s256", mission.s256()));
-        HttpResponse<String> response = sendSigned("POST", personServerBase.resolve("/permission"), toBytes(request));
+        request.put("mission_s256", mission.s256());
+        HttpResponse<String> response = sendSigned("POST", endpoint("permission_endpoint"), toBytes(request));
         return switch (response.statusCode()) {
             case 200 -> permissionFrom(response);
             case 202 -> pollForPermission(response, onInteraction);
@@ -120,16 +116,61 @@ public final class MissionClient {
     /** Appends an audit entry to the mission log (fire-and-record; the PS returns 201). */
     public void audit(Mission mission, String action, String description, Map<String, Object> result) {
         Map<String, Object> request = new LinkedHashMap<>();
-        request.put("mission", Map.of("approver", mission.approver(), "s256", mission.s256()));
+        request.put("mission_s256", mission.s256());
         request.put("action", action);
         request.put("description", description);
         if (result != null && !result.isEmpty()) {
             request.put("result", result);
         }
-        HttpResponse<String> response = sendSigned("POST", personServerBase.resolve("/audit"), toBytes(request));
+        HttpResponse<String> response = sendSigned("POST", endpoint("audit_endpoint"), toBytes(request));
         if (response.statusCode() != 201) {
             throw new MissionException(
                     "Audit entry for \"" + action + "\" failed: HTTP " + response.statusCode() + " " + response.body());
+        }
+    }
+
+    /** Proposes completion of the mission with a summary: {@code POST {mission_endpoint}/{s256}} (§8.5, AG-33). */
+    public void complete(Mission mission, String summary) {
+        String base = endpoint("mission_endpoint").toString();
+        URI missionUrl = URI.create((base.endsWith("/") ? base : base + "/") + mission.s256());
+        byte[] body = toBytes(Map.of("action", "completion", "summary", summary));
+        HttpResponse<String> response = sendSigned("POST", missionUrl, body);
+        if (response.statusCode() / 100 != 2) {
+            throw new MissionException(
+                    "Mission completion failed: HTTP " + response.statusCode() + " " + response.body());
+        }
+    }
+
+    /** A Person Server endpoint from its {@code aauth-person.json} metadata (fetched once). */
+    private URI endpoint(String name) {
+        Map<String, Object> metadata = personServerMetadata;
+        if (metadata == null) {
+            metadata = fetchMetadata();
+            personServerMetadata = metadata;
+        }
+        Object value = metadata.get(name);
+        if (value == null) {
+            throw new MissionException("Person Server metadata has no " + name);
+        }
+        return URI.create(String.valueOf(value));
+    }
+
+    private Map<String, Object> fetchMetadata() {
+        URI metadataUri = personServerBase.resolve("/.well-known/aauth-person.json");
+        try {
+            HttpResponse<String> response =
+                    http.send(HttpRequest.newBuilder(metadataUri).GET().build(), HttpResponse.BodyHandlers.ofString());
+            if (response.statusCode() != 200) {
+                throw new MissionException(
+                        "Person Server metadata at " + metadataUri + " returned HTTP " + response.statusCode());
+            }
+            return parseObject(response.body());
+        } catch (IOException e) {
+            throw new MissionException(
+                    "Person Server metadata at " + metadataUri + " unreachable: " + e.getMessage(), e);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new MissionException("Interrupted fetching Person Server metadata", e);
         }
     }
 
@@ -175,24 +216,14 @@ public final class MissionClient {
         throw new MissionException("No user decision on the " + what + " within " + decisionTimeout.toSeconds() + "s");
     }
 
+    /** Verifies the approval body (§8.2, AG-32): {@code s256} over the decoded mission bytes. */
     private static Mission missionFrom(HttpResponse<String> response) {
-        String header = response.headers()
-                .firstValue("AAuth-Mission")
-                .orElseThrow(() -> new MissionException("Mission response without AAuth-Mission header"));
-        String approver = null;
-        String s256 = null;
-        Matcher matcher = MISSION_HEADER_PARAM.matcher(header);
-        while (matcher.find()) {
-            if ("approver".equals(matcher.group(1))) {
-                approver = matcher.group(2);
-            } else {
-                s256 = matcher.group(2);
-            }
+        try {
+            return new Mission(
+                    Missions.parseApproval(parseObject(response.body())).missionS256());
+        } catch (TokenException e) {
+            throw new MissionException("Invalid mission approval: " + e.getMessage(), e);
         }
-        if (approver == null || s256 == null) {
-            throw new MissionException("Malformed AAuth-Mission header: " + header);
-        }
-        return new Mission(approver, s256);
     }
 
     private static Permission permissionFrom(HttpResponse<String> response) {

@@ -10,11 +10,11 @@ import org.junit.jupiter.api.Test;
 
 class AAuthRoundTripTest {
 
-    private static final URI CANONICAL = URI.create("http://gateway.uma.lab:9999/");
+    private static final URI CANONICAL = URI.create("https://sca.example/");
 
     private final AAuthClientSigner signer = AAuthClientSigner.ephemeral();
-    private final AAuthInboundVerifier verifier =
-            new AAuthInboundVerifier(CANONICAL, KeyPairs.generateEd25519(), "test-rsk-1");
+    private final AAuthInboundVerifier verifier = AAuthInboundVerifier.forMode(
+            CANONICAL, "hwk", "test:scope", "https://ps.example", KeyPairs.generateEd25519(), "test-rsk-1");
 
     private static byte[] body(String text) {
         return text.getBytes(StandardCharsets.UTF_8);
@@ -65,14 +65,14 @@ class AAuthRoundTripTest {
 
     @Test
     void wrongAuthorityIsRejected() {
-        URI elsewhere = URI.create("http://portal.uma.lab:9999/");
+        URI elsewhere = URI.create("https://portal.example/");
         byte[] payload = body("{}");
         Map<String, String> headers =
                 signer.sign("POST", elsewhere, Map.of("Content-Type", "application/json"), payload);
-        AAuthInboundVerifier verifierForOtherHost =
-                new AAuthInboundVerifier(CANONICAL, KeyPairs.generateEd25519(), "test-rsk-1");
+        AAuthInboundVerifier verifierForOtherHost = AAuthInboundVerifier.forMode(
+                CANONICAL, "hwk", "test:scope", "https://ps.example", KeyPairs.generateEd25519(), "test-rsk-1");
 
-        // Signed for portal.uma.lab but presented as if received at gateway.uma.lab.
+        // Signed for portal.example but presented as if received at sca.example.
         AAuthInboundVerifier.Verification verification = verifierForOtherHost.verify("POST", "/", headers, payload);
 
         assertThat(verification.valid()).isFalse();
