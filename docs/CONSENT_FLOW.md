@@ -10,10 +10,15 @@ UI                    backend                 supply-chain-agent        Person S
 │──────────────────►│ (returns requestId immediately; work continues         │
 │                   │  on a background virtual thread)                       │
 │  poll /progress   │  A2A message/send (scheme=jwt, aa-agent+jwt)           │
-│◄─────────────────►│──────────────────────►│ 401 AAuth-Requirement          │
-│                   │◄──────────────────────│ (resource token,               │
-│                   │                       │  scope "... require:user")     │
-│                   │  POST /token (resource token) ────────────────────────►│
+│◄─────────────────►│──────────────────────►│ 401 requirement=person-token   │
+│                   │  POST /person-token {resource} ───────────────────────►│
+│                   │◄─ aa-person+jwt (first use auto-approved by the demo) ─│
+│                   │  retry with the person token                           │
+│                   │──────────────────────►│ 401 requirement=auth-token     │
+│                   │◄──────────────────────│ (resource token from the       │
+│                   │                       │  person token, scope           │
+│                   │                       │  "... require:user")           │
+│                   │  POST /auth-token {resource_token, presented_token} ──►│
 │                   │◄─ 202 + pending URL + interaction url/code ────────────│
 │                   │  onInteraction(url, code):                             │
 │                   │    progress := interaction_required                    │
@@ -23,7 +28,7 @@ UI                    backend                 supply-chain-agent        Person S
 │  (or REST: GET /consent?code=… → POST /consent/{id}/decision)              │
 │                   │◄─ 200 + aa-auth+jwt ───────────────────────────────────│
 │                   │  retry A2A with scheme=jwt (auth token)                │
-│                   │──────────────────────►│ verified, scopes OK            │
+│                   │──────────────────────►│ verified, scope granted        │
 │  progress: completed; results fetched and rendered                         │
 ```
 
@@ -39,8 +44,11 @@ Key points:
 - The supply-chain agent's own hop to the market-analysis agent runs `auth-token` (no
   `require:user`) in the standard `consent` run mode, so only one human approval is
   needed. If that hop is switched to consent too, its interaction URL/code appear in
-  the supply-chain agent's log for approval via the Person Server UI (`/ui`, bearer
-  `mytoken`) — it has no channel to the browser.
+  the supply-chain agent's log for approval via the Person Server UI
+  (`https://ps.uma.lab/ui`, bearer `mytoken`) — it has no channel to the browser.
+- The person-token step also defers on first use (draft-11 PS-12). The demo approves
+  those out of band and does not surface them through `onInteraction`, so the only
+  consent the UI shows is the `require:user` one above.
 - Approval can be driven headlessly for tests:
   `GET {ps}/consent?code=<interaction_code>` → `pending_id`, then
   `POST {ps}/consent/{pending_id}/decision` with `{"approved": true|false}`.
