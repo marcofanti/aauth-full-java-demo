@@ -1,8 +1,8 @@
 # Moving to AAuth draft-11
 
-**Status (2026-10-13):** demo ported on branch `draft11` against the final library
-draft11 (strict) — see the PROGRESS.md decision log. Live verification waits on the
-Java PS's rework onto that library. The plan below is kept as the record of the decision.
+**Status (2026-10-13): done.** The demo runs on `aauth-java-library` 0.3.0 against
+aauth-java-person-server `main`, live-verified in all six modes; see the PROGRESS.md
+decision log. The plan below is kept as the record of the decision.
 
 Source: `draft-hardt-oauth-aauth-protocol-11` (2026-09-25; note the renamed draft —
 `-oauth-` was added) and the official per-role checklists in

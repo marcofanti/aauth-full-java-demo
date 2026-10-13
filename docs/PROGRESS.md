@@ -44,8 +44,9 @@ design decision deviates from the plan or from the Python reference.
     while sending to localhost, as Caddy does live.
   - Reduced matrix (decision A): the Python PS (aauth 0.3.2) issues draft-10 tokens, so
     its CI leg runs only `off`/`hwk`; the edge modes are refused by `run-demo.sh` until a
-    draft-11 aauth-service exists. Until 0.3.0 is on Central, CI builds the library and the
-    Java PS from their `draft11` branches.
+    draft-11 aauth-service exists.
+  - Released 2026-10-13: the demo pins `aauth-java-library` 0.3.0 from Maven Central, and
+    CI checks out aauth-java-person-server `main` (draft-11 merged as `76fce23`).
   - Live-verified 2026-10-13 over HTTPS through Caddy: all 6 modes against the Java PS
     (draft11 `e3828e6`, library `8c7d6a2`), and `off`/`hwk` against the Python PS. The
     first live run surfaced a cold-cache race in the library's `CachingJwksFetcher`

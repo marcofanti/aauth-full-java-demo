@@ -35,20 +35,10 @@ jobs:
         with:
           path: aauth-full-java-demo
           persist-credentials: false
-      # Until the draft-11 releases land: library and Java PS from their draft11 branches.
-      # Switch the PS ref to main and drop the library checkout + install once 0.3.0 is on
-      # Maven Central.
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          repository: marcofanti/aauth-java-library
-          ref: draft11
-          path: aauth-java-library
-          persist-credentials: false
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         if: matrix.ps-impl == 'java'
         with:
           repository: marcofanti/aauth-java-person-server
-          ref: draft11
           path: aauth-java-person-server
           persist-credentials: false
       - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5.7.0
@@ -56,8 +46,6 @@ jobs:
           distribution: temurin
           java-version: "26"
           cache: maven
-      - name: Install aauth-java-library 0.3.0-SNAPSHOT
-        run: mvn --batch-mode -q -f aauth-java-library/pom.xml -DskipTests install
       - name: Install Caddy and mkcert (pinned, checksum-verified)
         run: |
           curl -fsSL -o caddy.tar.gz \
