@@ -47,6 +47,9 @@ fi
 # issuers); run-demo.sh overrides this to http://127.0.0.1:8765 for them.
 export AAUTH_PS_PUBLIC_ORIGIN="${AAUTH_PS_PUBLIC_ORIGIN:-http://${DEMO_PS_HOST}:8765}"
 export AAUTH_AS_PUBLIC_ORIGIN="${AAUTH_AS_PUBLIC_ORIGIN:-${AAUTH_PS_PUBLIC_ORIGIN}}"
+# The Java PS gates outbound HTTP (https only, no private/loopback targets); the demo's
+# resources resolve to 127.0.0.1, so allow the uma.lab names explicitly.
+export AAUTH_PS_EGRESS_ALLOW_HOSTS="${AAUTH_PS_EGRESS_ALLOW_HOSTS:-*.uma.lab}"
 export AAUTH_PS_ADMIN_TOKEN="mytoken"
 export AAUTH_AS_PERSON_TOKEN="mytoken"
 export AAUTH_PS_INSECURE_DEV="false"
