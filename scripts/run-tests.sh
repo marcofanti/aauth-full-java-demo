@@ -24,7 +24,11 @@ groups_for() {
   esac
 }
 
-if [[ ${requested} == "all" ]]; then
+if [[ ${requested} == "all" && ${AAUTH_PS_IMPL:-python} == "python" ]]; then
+  # The Python PS (aauth 0.3.2) still issues draft-10 tokens, which the strict draft-11
+  # library rejects; only the modes that never contact a Person Server apply.
+  modes=(off hwk)
+elif [[ ${requested} == "all" ]]; then
   modes=(off hwk jwt auth-token consent missions)
 else
   groups_for "${requested}" >/dev/null
@@ -46,8 +50,8 @@ for mode in "${modes[@]}"; do
   # explicit skipTests config (bound to skipITs) overrides the global -DskipTests.
   if (cd "${repo_root}" && mvn -pl integration-tests -am test -DskipTests -DskipITs=false \
     -Dit.groups="${groups}" -Dsurefire.failIfNoSpecifiedTests=false \
-    -Ddemo.portal.host="${DEMO_PORTAL_HOST}" -Ddemo.gateway.host="${DEMO_GATEWAY_HOST}" \
-    -Ddemo.ps.host="${DEMO_PS_HOST}"); then
+    -Ddemo.portal.host="${DEMO_PORTAL_HOST}" -Ddemo.ps.host="${DEMO_PS_HOST}" \
+    -Ddemo.sca.host="${DEMO_SCA_HOST}" -Ddemo.maa.host="${DEMO_MAA_HOST}"); then
     results+=("${mode}: PASS")
   else
     results+=("${mode}: FAIL")

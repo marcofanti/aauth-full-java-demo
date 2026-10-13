@@ -29,11 +29,11 @@ public class BackendConfig {
     @Bean
     @ConditionalOnProperty(name = "demo.aauth.mode", havingValue = "jwt")
     public ManagedIdentity agentIdentity(
-            @Value("${demo.person-server-url:http://ps.uma.lab:8765}") String personServerUrl,
+            @Value("${demo.agent-server-url:https://as.uma.lab}") String agentServerUrl,
             @Value("${demo.aauth.key-dir:.aauth-demo}") String keyDirectory,
             @Value("${spring.application.name}") String agentName) {
         return ManagedIdentity.register(new AgentBootstrap.Config(
-                URI.create(personServerUrl), Path.of(keyDirectory), agentName, Duration.ofMinutes(2)));
+                URI.create(agentServerUrl), Path.of(keyDirectory), agentName, Duration.ofMinutes(2)));
     }
 
     /**
@@ -43,7 +43,7 @@ public class BackendConfig {
      */
     @Bean
     public SupplyChainGateway supplyChainGateway(
-            @Value("${demo.supply-chain-url:http://gateway.uma.lab:9999/}") String supplyChainUrl,
+            @Value("${demo.supply-chain-url:https://sca.uma.lab/}") String supplyChainUrl,
             @Value("${demo.aauth.mode:hwk}") String mode,
             ObjectProvider<ManagedIdentity> identity) {
         URI endpoint = URI.create(supplyChainUrl);
@@ -60,8 +60,7 @@ public class BackendConfig {
     @Bean
     @ConditionalOnProperty(name = "demo.aauth.mode", havingValue = "jwt")
     public MissionClient missionClient(
-            @Value("${demo.person-server-url:http://ps.uma.lab:8765}") String personServerUrl,
-            ManagedIdentity identity) {
+            @Value("${demo.person-server-url:https://ps.uma.lab}") String personServerUrl, ManagedIdentity identity) {
         return new MissionClient(URI.create(personServerUrl), identity::current);
     }
 

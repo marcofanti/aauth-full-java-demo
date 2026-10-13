@@ -23,23 +23,28 @@ Run modes (`./scripts/run-demo.sh <mode>`):
 | `off` | Plain HTTP |
 | `hwk` | Pseudonymous RFC 9421 signing (no Person Server) |
 | `jwt` | Agent identity: `aa-agent+jwt`, verifiers require identity |
-| `auth-token` | Agents demand `aa-auth+jwt`: 401 + resource token → autonomous Person Server exchange → retry |
+| `auth-token` | Agents demand `aa-auth+jwt` (AAuth draft-11): agent token → 401 `requirement=person-token` → person token from the PS → 401 with a resource token → exchange at the PS with `presented_token` → retry with the auth token, all autonomous |
 | `consent` | Like `auth-token`, but the supply-chain agent requires `require:user`: the Person Server defers until the user approves in the consent popup surfaced by the UI |
-| `edge` / `edge-auth` / `edge-consent` | The same three enforcement levels, but verified at the **agentgateway + aauth-service edge** (`scripts/setup-gateway.sh` once, then e.g. `./scripts/run-demo.sh edge-auth`): the gateway owns gateway.uma.lab:9999/:9998, agents run behind it with in-process verification off |
 | `missions` | `jwt` identity plus the Person Server's mission layer: the backend records a mission, in-scope steps auto-grant via `/permission` with no prompts, and an out-of-scope purchase step defers to the user — see [docs/MISSIONS.md](docs/MISSIONS.md) |
 
 Mode semantics: [docs/MODES.md](docs/MODES.md) · consent sequence:
 [docs/CONSENT_FLOW.md](docs/CONSENT_FLOW.md)
+
+The demo implements AAuth **draft-11** (`aauth-java-library` 0.3.0). The edge modes
+(agentgateway + aauth-service) are unavailable until that verifier supports draft-11; see
+[docs/DRAFT11_PLAN.md](docs/DRAFT11_PLAN.md). First-use person-token approvals are granted
+automatically by `scripts/approve-person-tokens.sh`, so the consent you see is the
+`require:user` one.
 
 Agent tokens auto-renew before expiry (`jkt-jwt` refresh; exercise it with
 `AAUTH_AS_AGENT_TOKEN_LIFETIME=90 ./scripts/run-person-server.sh`).
 
 ```
 Browser (portal.uma.lab:3050) ──REST──► backend (portal.uma.lab:8000)
-    ──A2A, signed──► supply-chain-agent (gateway.uma.lab:9999)
-        ──A2A, signed──► market-analysis-agent (gateway.uma.lab:9998)
+    ──A2A, signed──► supply-chain-agent (https://sca.uma.lab)
+        ──A2A, signed──► market-analysis-agent (https://maa.uma.lab)
 
-ps.uma.lab:8765 — aauth-person-server: Agent Provider, token exchange, consent UI
+https://ps.uma.lab + https://as.uma.lab — aauth-java-person-server: Agent Server, person and auth tokens, consent UI
 ```
 
 ## Integration tests
@@ -98,15 +103,26 @@ so its endpoints appear as client spans only. Stop with `./scripts/stop-jaeger.s
 
 - JDK 26+, Maven 3.9+
 - Node 22+ (UI)
-- `/etc/hosts` entries: `127.0.0.1 portal.uma.lab gateway.uma.lab ps.uma.lab`
+- [Caddy](https://caddyserver.com) and [mkcert](https://github.com/FiloSottile/mkcert)
+  (`brew install caddy mkcert`, then `mkcert -install` once)
+- `/etc/hosts` entries:
+  `127.0.0.1 portal.uma.lab ps.uma.lab as.uma.lab sca.uma.lab maa.uma.lab`
 
-Hostnames live in [hosts.env](hosts.env) (defaults above); the scripts source it and
-pass the names to the Java services and integration tests. Override any
-`DEMO_*_HOST` from the environment before running.
+AAuth draft-11 identifiers are https origins without a port. The Person Server
+(`https://ps.uma.lab`), its Agent Server (`https://as.uma.lab`) and the two agents
+(`https://sca.uma.lab`, `https://maa.uma.lab`) sit behind a local Caddy on :443
+([caddy/Caddyfile](caddy/Caddyfile), shared with `aauth-java-person-server`) and listen on
+127.0.0.1 only. Run `./scripts/setup-tls.sh` once: it creates the `*.uma.lab` certificate
+and a JVM truststore (JDK CAs + mkcert root) that the scripts pass to every Java process.
+The backend and UI stay on plain http (`portal.uma.lab`); they are not AAuth identifiers.
+
+Hostnames live in [hosts.env](hosts.env); the scripts source it and pass the names to the
+Java services and integration tests.
 
 ## Build and run
 
 ```bash
+./scripts/setup-tls.sh          # once: *.uma.lab cert + JVM truststore
 mvn clean verify                # all modules: tests, coverage gate, Spotless, -Werror
 mvn -DskipTests package         # just the runnable jars
 ./scripts/run-demo.sh consent   # full flow: Person Server, registration + auto-approval,
@@ -117,8 +133,9 @@ cd supply-chain-ui && npm install && npm run dev   # UI on http://portal.uma.lab
 ```
 
 Stop with `./scripts/stop-demo.sh` (and `./scripts/stop-person-server.sh`). The Person
-Server is the sibling `../aauth-person-server` checkout, run unmodified with uma.lab
-origins; its consent/admin UI is at `http://ps.uma.lab:8765/ui` (token `mytoken`).
+Server is the sibling `../aauth-java-person-server` (`AAUTH_PS_IMPL=java`); the Python
+reference `../aauth-person-server` still issues draft-10 tokens, so with it only `off` and
+`hwk` work. The consent/admin UI is at `https://ps.uma.lab/ui` (token `mytoken`).
 
 ## Try it
 
@@ -147,8 +164,8 @@ curl -s http://portal.uma.lab:8000/optimization/results/<requestId>
 | `a2a-support` | Minimal A2A JSON-RPC types, deterministic JSON codec, signing-aware client |
 | `demo-common` | Adaptation layer to the aauth-java-library: signers (`hwk`/`jwt`), inbound verifier with requirement levels (incl. RFC 9530 body-digest enforcement), bootstrap + `jkt-jwt` refresh (`ManagedIdentity`), exchange-capable client (`A2aAuthClient`) |
 | `backend` | Public REST API (portal.uma.lab:8000): async start/progress/results, activity feed |
-| `supply-chain-agent` | A2A server (gateway.uma.lab:9999): policy-driven optimization, optional MAA delegation |
-| `market-analysis-agent` | Leaf A2A server (gateway.uma.lab:9998): canned demand/trend/pattern analyses |
+| `supply-chain-agent` | A2A server (https://sca.uma.lab): policy-driven optimization, optional MAA delegation |
+| `market-analysis-agent` | Leaf A2A server (https://maa.uma.lab): canned demand/trend/pattern analyses |
 | `supply-chain-ui` | React + Vite dashboard (portal.uma.lab:3050) with the consent banner/popup flow |
 | `integration-tests` | Mode-tagged end-to-end suites, run via `scripts/run-tests.sh` |
 

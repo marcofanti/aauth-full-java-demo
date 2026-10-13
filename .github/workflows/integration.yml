@@ -10,10 +10,12 @@ permissions: {}
 
 jobs:
   mode-matrix:
-    # Runs the live 6-mode matrix (off/hwk/jwt/auth-token/consent/missions) against
-    # BOTH Person Server implementations — the Python reference and the Java port —
-    # as a cross-implementation conformance check. Edge modes need the agentgateway
-    # binaries and are exercised locally, not here.
+    # Runs the live mode matrix against each Person Server implementation. AAuth draft-11
+    # identifiers are https origins without a port, so every leg fronts the services with
+    # Caddy on :443 using an mkcert certificate for *.uma.lab.
+    #   java-ps:   all six modes (off/hwk/jwt/auth-token/consent/missions) against the Java PS
+    #   python-ps: off/hwk only — the Python PS still issues draft-10 tokens
+    # Edge modes need a draft-11 edge verifier and are not run.
     strategy:
       fail-fast: false
       matrix:
@@ -23,16 +25,15 @@ jobs:
     timeout-minutes: 45
     permissions:
       contents: read
+    env:
+      CADDY_VERSION: "2.11.7"
+      CADDY_SHA512: a7a433a1b133efc3c8d10eb0b99d52a24b5ef5c322dc77f5282182b1c0402139ab83f3a99f0c52409df77d20123fb0b523edad8a66d8f5e49136197bf61ef0e7
+      MKCERT_VERSION: "1.4.4"
+      MKCERT_SHA256: 6d31c65b03972c6dc4a14ab429f2928300518b26503f58723e532d1b0a3bbb52
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           path: aauth-full-java-demo
-          persist-credentials: false
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        if: matrix.ps-impl == 'python'
-        with:
-          repository: christian-posta/aauth-person-server
-          path: aauth-person-server
           persist-credentials: false
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         if: matrix.ps-impl == 'java'
@@ -45,10 +46,26 @@ jobs:
           distribution: temurin
           java-version: "26"
           cache: maven
-      - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
-        if: matrix.ps-impl == 'python'
+      - name: Install Caddy and mkcert (pinned, checksum-verified)
+        run: |
+          curl -fsSL -o caddy.tar.gz \
+            "https://github.com/caddyserver/caddy/releases/download/v${CADDY_VERSION}/caddy_${CADDY_VERSION}_linux_amd64.tar.gz"
+          echo "${CADDY_SHA512}  caddy.tar.gz" | sha512sum -c -
+          curl -fsSL -o mkcert \
+            "https://github.com/FiloSottile/mkcert/releases/download/v${MKCERT_VERSION}/mkcert-v${MKCERT_VERSION}-linux-amd64"
+          echo "${MKCERT_SHA256}  mkcert" | sha256sum -c -
+          tar -xzf caddy.tar.gz caddy
+          sudo install -m 0755 caddy mkcert /usr/local/bin/
+          # Caddy binds :443 without root.
+          sudo setcap cap_net_bind_service=+ep /usr/local/bin/caddy
+          mkcert -install
       - name: Map uma.lab hostnames to loopback
-        run: echo "127.0.0.1 portal.uma.lab gateway.uma.lab ps.uma.lab" | sudo tee -a /etc/hosts
+        run: |
+          echo "127.0.0.1 portal.uma.lab ps.uma.lab as.uma.lab sca.uma.lab maa.uma.lab" \
+            | sudo tee -a /etc/hosts
+      - name: Local TLS (cert + JVM truststore)
+        working-directory: aauth-full-java-demo
+        run: ./scripts/setup-tls.sh
       - name: Run mode matrix
         working-directory: aauth-full-java-demo
         env:

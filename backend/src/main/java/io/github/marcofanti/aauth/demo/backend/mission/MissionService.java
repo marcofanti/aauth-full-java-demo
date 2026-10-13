@@ -89,6 +89,8 @@ public class MissionService {
             }
             purchaseStep(missionId, mission, products.getFirst());
 
+            missions.complete(
+                    mission, "Optimized " + String.join(", ", products) + "; purchase step decided by the user");
             update(missionId, record -> record.completed(Instant.now()));
             activities.record("backend", "Mission completed");
         } catch (Exception e) {

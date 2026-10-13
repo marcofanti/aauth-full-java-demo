@@ -5,6 +5,8 @@ import static org.assertj.core.api.Assertions.assertThatExceptionOfType;
 
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
+import io.github.marcofanti.aauth.demo.a2a.A2aJson;
+import io.github.marcofanti.aauth.missions.Missions;
 import io.github.marcofanti.aauth.signing.Jwts;
 import io.github.marcofanti.aauth.signing.keys.Jwk;
 import io.github.marcofanti.aauth.signing.keys.KeyPairs;
@@ -27,7 +29,12 @@ import org.junit.jupiter.api.Test;
 /** Mission-layer flows against a stub Person Server: propose, permission, audit, deferral. */
 class MissionClientTest {
 
-    private static final String MISSION_HEADER = "approver=\"aauth:alice@ps.test\", s256=\"abc123\"";
+    /** A draft-11 approval body ({@code s256} + base64url mission blob), as the PS returns it. */
+    private static final Map<String, Object> APPROVAL =
+            Missions.buildApproval(Map.of("description", "Optimize things", "agent", "aauth:client@test"), null, null);
+
+    private static final String S256 = String.valueOf(APPROVAL.get("s256"));
+    private static final String APPROVAL_JSON = A2aJson.toJson(APPROVAL);
 
     private HttpServer personServer;
     private final KeyPair providerKey = KeyPairs.generateEd25519();
@@ -37,6 +44,20 @@ class MissionClientTest {
     void startServer() throws IOException {
         personServer = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
         personServer.start();
+        personServer.createContext("/.well-known/aauth-person.json", exchange -> {
+            try (exchange) {
+                String base = baseUri().toString();
+                respond(
+                        exchange,
+                        200,
+                        Map.of("Content-Type", "application/json"),
+                        A2aJson.toJson(Map.of(
+                                "issuer", base,
+                                "mission_endpoint", base + "/agent-missions",
+                                "permission_endpoint", base + "/permission",
+                                "audit_endpoint", base + "/audit")));
+            }
+        });
     }
 
     @AfterEach
@@ -76,27 +97,26 @@ class MissionClientTest {
     }
 
     @Test
-    void proposeReturnsMissionFromHeaderWhenAutoApproved() {
+    void proposeReturnsTheVerifiedMissionHashWhenAutoApproved() {
         AtomicReference<String> requestBody = new AtomicReference<>();
-        personServer.createContext("/mission", exchange -> {
+        personServer.createContext("/agent-missions", exchange -> {
             try (exchange) {
                 requestBody.set(new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8));
-                respond(exchange, 200, Map.of("AAuth-Mission", MISSION_HEADER), "{}");
+                respond(exchange, 200, Map.of("Content-Type", "application/json"), APPROVAL_JSON);
             }
         });
 
         MissionClient.Mission mission =
                 client().propose("Optimize things", Map.of("supply-chain:optimize", "Optimize"), null);
 
-        assertThat(mission.approver()).isEqualTo("aauth:alice@ps.test");
-        assertThat(mission.s256()).isEqualTo("abc123");
+        assertThat(mission.s256()).isEqualTo(S256);
         assertThat(requestBody.get()).contains("\"supply-chain:optimize\"").contains("Optimize things");
     }
 
     @Test
     void proposeDefersThenPollsToApproval() {
         AtomicInteger polls = new AtomicInteger();
-        personServer.createContext("/mission", exchange -> {
+        personServer.createContext("/agent-missions", exchange -> {
             try (exchange) {
                 respond(
                         exchange,
@@ -111,7 +131,7 @@ class MissionClientTest {
                 if (polls.incrementAndGet() < 2) {
                     respond(exchange, 202, Map.of("Retry-After", "0"), "{\"status\":\"pending\"}");
                 } else {
-                    respond(exchange, 200, Map.of("AAuth-Mission", MISSION_HEADER), "{}");
+                    respond(exchange, 200, Map.of("Content-Type", "application/json"), APPROVAL_JSON);
                 }
             }
         });
@@ -119,14 +139,14 @@ class MissionClientTest {
         MissionClient.Mission mission = client().propose(
                         "Do the mission", Map.of("tool", "A tool"), (url, code) -> interaction.set(url + "|" + code));
 
-        assertThat(mission.s256()).isEqualTo("abc123");
+        assertThat(mission.s256()).isEqualTo(S256);
         assertThat(polls.get()).isEqualTo(2);
         assertThat(interaction.get()).isEqualTo(baseUri() + "/consent?code=1234|1234");
     }
 
     @Test
     void deniedMissionApprovalThrows() {
-        personServer.createContext("/mission", exchange -> {
+        personServer.createContext("/agent-missions", exchange -> {
             try (exchange) {
                 respond(
                         exchange,
@@ -155,7 +175,7 @@ class MissionClientTest {
         });
 
         MissionClient.Permission permission = client().permission(
-                        new MissionClient.Mission("aauth:alice@ps.test", "abc123"),
+                        new MissionClient.Mission(S256),
                         "supply-chain:optimize",
                         "Optimize laptops",
                         Map.of("product", "laptop"),
@@ -184,7 +204,7 @@ class MissionClientTest {
         AtomicReference<String> interaction = new AtomicReference<>();
 
         MissionClient.Permission permission = client().permission(
-                        new MissionClient.Mission("aauth:alice@ps.test", "abc123"),
+                        new MissionClient.Mission(S256),
                         "inventory:purchase",
                         "Purchase stock",
                         Map.of("units", 500),
@@ -205,17 +225,19 @@ class MissionClientTest {
         });
 
         client().audit(
-                        new MissionClient.Mission("aauth:alice@ps.test", "abc123"),
+                        new MissionClient.Mission(S256),
                         "supply-chain:optimize",
                         "Optimized laptops",
                         Map.of("summary", "all good"));
 
-        assertThat(requestBody.get()).contains("abc123").contains("Optimized laptops");
+        assertThat(requestBody.get())
+                .contains("\"mission_s256\":\"" + S256 + "\"")
+                .contains("Optimized laptops");
     }
 
     @Test
     void unexpectedStatusesThrowWithContext() {
-        personServer.createContext("/mission", exchange -> {
+        personServer.createContext("/agent-missions", exchange -> {
             try (exchange) {
                 respond(exchange, 500, Map.of(), "{\"error\":\"boom\"}");
             }
@@ -231,7 +253,7 @@ class MissionClientTest {
             }
         });
         MissionClient client = client();
-        MissionClient.Mission mission = new MissionClient.Mission("aauth:alice@ps.test", "abc123");
+        MissionClient.Mission mission = new MissionClient.Mission(S256);
 
         assertThatExceptionOfType(MissionException.class)
                 .isThrownBy(() -> client.propose("x", Map.of("tool", "t"), null))
@@ -247,12 +269,12 @@ class MissionClientTest {
     @Test
     void requestsAreSignedWithTheAgentToken() {
         AtomicReference<List<String>> signatureHeaders = new AtomicReference<>();
-        personServer.createContext("/mission", exchange -> {
+        personServer.createContext("/agent-missions", exchange -> {
             try (exchange) {
                 signatureHeaders.set(List.of(
                         String.valueOf(exchange.getRequestHeaders().getFirst("Signature-Input")),
                         String.valueOf(exchange.getRequestHeaders().getFirst("Signature-Key"))));
-                respond(exchange, 200, Map.of("AAuth-Mission", MISSION_HEADER), "{}");
+                respond(exchange, 200, Map.of("Content-Type", "application/json"), APPROVAL_JSON);
             }
         });
 
@@ -260,5 +282,38 @@ class MissionClientTest {
 
         assertThat(signatureHeaders.get().get(0)).contains("content-digest");
         assertThat(signatureHeaders.get().get(1)).contains("sig=jwt;jwt=");
+    }
+
+    @Test
+    void completionPostsToTheMissionUrl() {
+        AtomicReference<String> path = new AtomicReference<>();
+        AtomicReference<String> requestBody = new AtomicReference<>();
+        personServer.createContext("/agent-missions/", exchange -> {
+            try (exchange) {
+                path.set(exchange.getRequestURI().getPath());
+                requestBody.set(new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8));
+                respond(exchange, 200, Map.of("Content-Type", "application/json"), "{}");
+            }
+        });
+
+        client().complete(new MissionClient.Mission(S256), "all done");
+
+        assertThat(path.get()).isEqualTo("/agent-missions/" + S256);
+        assertThat(requestBody.get()).contains("\"action\":\"completion\"").contains("all done");
+    }
+
+    @Test
+    void approvalWithAMismatchedHashIsRejected() {
+        Map<String, Object> tampered = new java.util.LinkedHashMap<>(APPROVAL);
+        tampered.put("s256", "A".repeat(43));
+        personServer.createContext("/agent-missions", exchange -> {
+            try (exchange) {
+                respond(exchange, 200, Map.of("Content-Type", "application/json"), A2aJson.toJson(tampered));
+            }
+        });
+
+        assertThatExceptionOfType(MissionException.class)
+                .isThrownBy(() -> client().propose("x", Map.of("tool", "t"), null))
+                .withMessageContaining("Invalid mission approval");
     }
 }

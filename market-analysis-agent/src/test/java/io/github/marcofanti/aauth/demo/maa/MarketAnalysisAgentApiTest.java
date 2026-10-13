@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import io.github.marcofanti.aauth.demo.a2a.A2aClient;
 import io.github.marcofanti.aauth.demo.a2a.A2aJson;
 import io.github.marcofanti.aauth.demo.a2a.AgentCard;
+import io.github.marcofanti.aauth.demo.a2a.RequestSigner;
 import io.github.marcofanti.aauth.demo.common.AAuthClientSigner;
 import java.net.URI;
 import java.net.http.HttpClient;
@@ -17,16 +18,20 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.TestPropertySource;
 
 /**
- * Runs on a fixed port so the AAuth canonical authority ({@code localhost:19998},
- * resolving to 127.0.0.1) matches what clients sign.
+ * The agent's identifier is {@code https://maa.example}; requests travel to localhost and are
+ * signed for the identifier, as they would be behind the Caddy front.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.DEFINED_PORT)
-@TestPropertySource(properties = {"server.port=19998", "demo.agent-url=http://localhost:19998/", "demo.aauth.mode=hwk"})
+@TestPropertySource(properties = {"server.port=19998", "demo.agent-url=https://maa.example/", "demo.aauth.mode=hwk"})
 class MarketAnalysisAgentApiTest {
 
     private static final URI BASE = URI.create("http://localhost:19998/");
+    /** The agent's AAuth identifier; requests reach {@link #BASE} but are signed for this, as behind Caddy. */
+    private static final URI IDENTIFIER = URI.create("https://maa.example/");
 
-    private final AAuthClientSigner signer = AAuthClientSigner.ephemeral();
+    private final AAuthClientSigner ephemeral = AAuthClientSigner.ephemeral();
+    private final RequestSigner signer = (method, target, headers, body) ->
+            ephemeral.sign(method, IDENTIFIER.resolve(target.getRawPath()), headers, body);
 
     @Test
     void answersSignedMessageSendWithMarkdownReport() throws Exception {
@@ -56,7 +61,7 @@ class MarketAnalysisAgentApiTest {
         assertThat(response.statusCode()).isEqualTo(200);
         AgentCard card = A2aJson.parse(response.body(), AgentCard.class);
         assertThat(card.name()).isEqualTo("Market Analysis Agent");
-        assertThat(card.url()).isEqualTo("http://localhost:19998/");
+        assertThat(card.url()).isEqualTo("https://maa.example/");
     }
 
     @Test
@@ -78,7 +83,8 @@ class MarketAnalysisAgentApiTest {
 
     private HttpResponse<String> postSigned(String body) throws Exception {
         byte[] bytes = body.getBytes(StandardCharsets.UTF_8);
-        Map<String, String> headers = signer.sign("POST", BASE, Map.of("Content-Type", "application/json"), bytes);
+        Map<String, String> headers =
+                signer.sign("POST", IDENTIFIER, Map.of("Content-Type", "application/json"), bytes);
         return post(BASE, body, headers);
     }
 
