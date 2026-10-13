@@ -3,28 +3,35 @@ package io.github.marcofanti.aauth.demo.it;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.json.JsonMapper;
 import java.io.IOException;
+import java.io.InputStream;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.security.GeneralSecurityException;
+import java.security.KeyStore;
 import java.time.Duration;
 import java.util.LinkedHashSet;
 import java.util.Map;
 import java.util.Set;
+import javax.net.ssl.SSLContext;
+import javax.net.ssl.TrustManagerFactory;
 
 /**
  * Thin client for the live demo services under test (started by scripts/run-demo.sh).
  * Hostnames come from the {@code demo.*.host} system properties (run-tests.sh passes them
- * from hosts.env), defaulting to the uma.lab names.
+ * from hosts.env), defaulting to the uma.lab names. The agents and the Person Server are
+ * reached over https through the local Caddy front; TLS trust is the truststore built by
+ * scripts/setup-tls.sh (JDK CAs + mkcert root).
  */
 final class DemoApi {
 
     static final URI BACKEND = URI.create("http://" + host("demo.portal.host", "portal.uma.lab") + ":8000");
-    static final URI SUPPLY_CHAIN_AGENT =
-            URI.create("http://" + host("demo.gateway.host", "gateway.uma.lab") + ":9999/");
-    static final URI MARKET_ANALYSIS_AGENT =
-            URI.create("http://" + host("demo.gateway.host", "gateway.uma.lab") + ":9998/");
-    static final URI PERSON_SERVER = URI.create("http://" + host("demo.ps.host", "ps.uma.lab") + ":8765");
+    static final URI SUPPLY_CHAIN_AGENT = URI.create("https://" + host("demo.sca.host", "sca.uma.lab") + "/");
+    static final URI MARKET_ANALYSIS_AGENT = URI.create("https://" + host("demo.maa.host", "maa.uma.lab") + "/");
+    static final URI PERSON_SERVER = URI.create("https://" + host("demo.ps.host", "ps.uma.lab"));
 
     private static String host(String property, String fallback) {
         return System.getProperty(property, fallback);
@@ -35,7 +42,26 @@ final class DemoApi {
     private static final HttpClient HTTP = HttpClient.newBuilder()
             .version(HttpClient.Version.HTTP_1_1)
             .connectTimeout(Duration.ofSeconds(5))
+            .sslContext(localTrust())
             .build();
+
+    private static SSLContext localTrust() {
+        Path truststore = Path.of(System.getProperty(
+                "demo.truststore", System.getProperty("user.home") + "/.local/share/uma-lab-tls/truststore.p12"));
+        try (InputStream in = Files.newInputStream(truststore)) {
+            KeyStore store = KeyStore.getInstance("PKCS12");
+            store.load(in, "changeit".toCharArray());
+            TrustManagerFactory trust = TrustManagerFactory.getInstance(TrustManagerFactory.getDefaultAlgorithm());
+            trust.init(store);
+            SSLContext context = SSLContext.getInstance("TLS");
+            context.init(null, trust.getTrustManagers(), null);
+            return context;
+        } catch (IOException | GeneralSecurityException e) {
+            throw new IllegalStateException(
+                    "Cannot load " + truststore + " — run scripts/setup-tls.sh first: " + e.getMessage(), e);
+        }
+    }
+
     private static final JsonMapper MAPPER = JsonMapper.builder().build();
     private static final TypeReference<Map<String, Object>> OBJECT = new TypeReference<>() {};
 
