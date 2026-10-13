@@ -79,12 +79,17 @@ final class FakePersonServer {
     }
 
     String authToken(KeyPair agentKey, String resource, String scope) {
+        return authToken(agentKey, resource, scope, inOneHour(), inOneHour());
+    }
+
+    /** An auth token bounded by the agent token's and the presented token's {@code exp} (PS-34). */
+    String authToken(KeyPair agentKey, String resource, String scope, long agentExp, long presentedExp) {
         return AuthTokens.create(AuthTokens.Spec.builder(PS, resource, subFor(resource), PS)
                 .cnfJwk(cnf(agentKey))
                 .signingKey(psKey.getPrivate(), KID)
                 .dwk(AuthTokens.DWK_PERSON)
                 .scope(scope)
-                .bounds(inOneHour(), inOneHour())
+                .bounds(agentExp, presentedExp)
                 .build());
     }
 
@@ -109,8 +114,7 @@ final class FakePersonServer {
     private AAuthResponse issuePersonToken(Map<String, String> headers, byte[] body) throws IOException {
         personTokenRequests.incrementAndGet();
         String resource = String.valueOf(parse(body).get("resource"));
-        Map<String, Object> agentClaims = Jwts.parse(signerToken(headers)).payload();
-        long agentExp = ((Number) agentClaims.get("exp")).longValue();
+        long agentExp = expOf(signerToken(headers));
         return json(
                 200, Map.of("person_token", personToken(signerKey(headers), resource, agentExp), "expires_in", 3600));
     }
@@ -123,7 +127,15 @@ final class FakePersonServer {
                 Jwts.parse(String.valueOf(request.get("resource_token"))).payload();
         String resource = String.valueOf(resourceToken.get("iss"));
         String scope = String.valueOf(resourceToken.get("scope"));
-        return json(200, Map.of("auth_token", authToken(signerKey(headers), resource, scope), "expires_in", 3600));
+        long agentExp = expOf(signerToken(headers));
+        long presentedExp = expOf(lastPresentedToken);
+        return json(
+                200,
+                Map.of(
+                        "auth_token",
+                        authToken(signerKey(headers), resource, scope, agentExp, presentedExp),
+                        "expires_in",
+                        3600));
     }
 
     /** The token the caller signed with (its Signature-Key {@code jwt}). */
@@ -152,6 +164,10 @@ final class FakePersonServer {
 
     private static Map<String, Object> jwks(PublicKey key, String kid) {
         return Jwk.generateJwks(List.of(Jwk.publicKeyToJwk(key, kid)));
+    }
+
+    private static long expOf(String token) {
+        return ((Number) Jwts.parse(token).payload().get("exp")).longValue();
     }
 
     private static long inOneHour() {
