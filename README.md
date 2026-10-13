@@ -60,31 +60,32 @@ consent approval/denial flows driven through the Person Server's REST API.
 
 ## Docker
 
-The full edge architecture also runs as containers — UI, backend, both agents, the
-agentgateway + aauth-service edge, the Java Person Server, and Jaeger:
+The draft-11 demo also runs as containers — UI, backend, both agents, the Java Person
+Server, a Caddy HTTPS front, an approver and Jaeger:
 
 ```bash
-docker compose up -d                             # identity enforcement (default)
-AAUTH_VARIANT=auth-token docker compose up -d    # or auth-token / consent
-docker compose -f docker-compose.yml \
-  -f docker/compose.python-ps.yml up -d --build  # swap in the Python Person Server
+./scripts/setup-tls.sh                     # once: *.uma.lab cert + JVM truststore
+./scripts/compose-up.sh consent            # or: off | hwk | jwt | auth-token | missions
 docker compose down
 ```
 
-Everything builds from source (the aauth-java-library and the sibling
-aauth-java-person-server are compiled inside the images; build context is the parent
-directory). Network aliases carry the demo hostnames in-network: the gateway container
-is `gateway.uma.lab`, the backend is `portal.uma.lab`, and the Person Server is
-`ps.localhost` — a `*.localhost` name satisfies the Go verifier's issuer rules *and*
-resolves to loopback in browsers with no /etc/hosts entry, so the consent popup at
-`http://ps.localhost:8765/ui/consent.html` just works. Agent registrations are
-auto-approved by a one-shot `approver` container; keys and the PS database live in
-named volumes, so identities survive restarts. From the host, everything is reachable
-on the same URLs as the native scripts (UI :3050, backend :8000, gateway :9999/:9998,
-PS :8765, Jaeger :16686).
+`compose-up.sh` maps the run mode to per-service modes exactly like `run-demo.sh`. The
+`caddy` container terminates TLS for `ps`, `as`, `sca` and `maa.uma.lab` with the same
+mkcert certificate as the native setup (mounted read-only from
+`~/.local/share/uma-lab-tls`) and carries those names as network aliases, so containers
+reach each other at their AAuth identifiers through it; it publishes :443, so the
+consent popup at `https://ps.uma.lab/ui/consent.html` works from the host browser.
+Only one Caddy can own :443 — stop a native one first (`caddy stop`).
 
-The native scripts remain the primary dev workflow; compose is for reproducible demos
-and CI.
+Java containers trust the mkcert root through the shared truststore
+(`JAVA_TOOL_OPTIONS`). The `approver` container approves agent registrations and
+first-use person-token requests; `require:user` consent is left for a human. Keys and
+the PS database live in named volumes, so identities survive restarts. From the host:
+UI :3050, backend :8000, Jaeger :16686, and the https names above.
+
+Everything builds from source: the sibling aauth-java-person-server is compiled inside
+its image (build context is the parent directory), and the library resolves from Maven
+Central. The edge modes have no compose variant until a draft-11 edge verifier exists.
 
 ## Tracing
 

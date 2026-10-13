@@ -22,6 +22,8 @@ import org.slf4j.LoggerFactory;
  * The resource's challenges drive the rest:
  *
  * <ol>
+ *   <li>{@code requirement=agent-token} — the resource accepts only agent identity; drop a
+ *       cached auth token and retry with the agent token;
  *   <li>{@code requirement=person-token} — fetch (or reuse) a person token for this resource from
  *       the Person Server and retry presenting it (§7.1);
  *   <li>{@code requirement=auth-token} with a resource token — exchange it at the Person Server
@@ -101,6 +103,14 @@ public final class A2aAuthClient {
             BiConsumer<String, String> onInteraction,
             A2aClientException cause)
             throws A2aClientException {
+        if (AAuthHeaders.REQUIRE_AGENT_TOKEN.equals(challenge.requirement())
+                && !identity.agentToken().equals(presented)) {
+            // The resource now accepts only agent identity (e.g. its requirement was lowered);
+            // drop the cached auth token and present the agent token.
+            authToken = null;
+            log.info("Resource {} requires an agent token; dropping the cached auth token", resource);
+            return identity.agentToken();
+        }
         if (AAuthHeaders.REQUIRE_PERSON_TOKEN.equals(challenge.requirement())) {
             authToken = null;
             log.info("Resource {} requires a person token", resource);
