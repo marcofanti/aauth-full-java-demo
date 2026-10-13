@@ -19,6 +19,34 @@ design decision deviates from the plan or from the Python reference.
 
 ## Decision log
 
+- 2026-10-13 — **AAuth draft-11** (branch `draft11`, on `aauth-java-library` 0.3.0, strict):
+  - Flow: agent token → `requirement=person-token` → person token from the PS
+    (`/person-token`) → resource token derived from that person token → `/auth-token`
+    with `presented_token` → `aa-auth+jwt`. `AAuthInboundVerifier` delegates to the
+    library's `RequestVerifier` and branches on the presented token type; `hwk` mode
+    verifies through the signing module, since the resource verifier accepts only `jwt`.
+  - Identifiers must be lowercase https origins without a port, so the demo moved behind
+    a shared local Caddy on :443 (`caddy/Caddyfile`, same file in
+    aauth-java-person-server): `https://{ps,as,sca,maa}.uma.lab` → 127.0.0.1 ports, one
+    mkcert `*.uma.lab` cert, and a JVM truststore (JDK CAs + mkcert root,
+    `scripts/setup-tls.sh`) passed to every Java process. The library's default clients
+    admit only public HTTPS URLs, so all library calls get `AAuthHttp`'s JDK client.
+    Backend and UI stay on plain http (not AAuth identifiers).
+  - First-use person-token consent (PS-12) is auto-approved by
+    `scripts/approve-person-tokens.sh` (kind `person_token` only), keeping
+    `require:user` as the one consent the UI shows; the client deliberately doesn't
+    surface first-use approvals through `onInteraction`.
+  - Missions: `mission_s256` replaces `{approver, s256}`; endpoints come from
+    `aauth-person.json`; approval bodies are verified with `Missions.parseApproval`;
+    runs end with completion at `{mission_endpoint}/{s256}`.
+  - Tests use an in-process `FakePersonServer` at `https://ps.example` (injected
+    `HttpTransport` + `JwksFetcher`); agent API tests sign for `https://{sca,maa}.example`
+    while sending to localhost, as Caddy does live.
+  - Reduced matrix (decision A): the Python PS (aauth 0.3.2) issues draft-10 tokens, so
+    its CI leg runs only `off`/`hwk`; the edge modes are refused by `run-demo.sh` until a
+    draft-11 aauth-service exists. Until 0.3.0 is on Central, CI builds the library and the
+    Java PS from their `draft11` branches.
+
 - 2026-08-07 — **Adopt aauth-java-library 0.2.3 (AAuth draft-10)**: 0.2.x signs with
   fully-specified `alg: Ed25519` (RFC 9864) and adds the agent-token `ps` claim. The
   first bump (0.2.1) broke both CI matrix legs — the matrix doing its job:
