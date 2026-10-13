@@ -46,6 +46,11 @@ design decision deviates from the plan or from the Python reference.
     its CI leg runs only `off`/`hwk`; the edge modes are refused by `run-demo.sh` until a
     draft-11 aauth-service exists. Until 0.3.0 is on Central, CI builds the library and the
     Java PS from their `draft11` branches.
+  - Live-verified 2026-10-13 over HTTPS through Caddy: all 6 modes against the Java PS
+    (draft11 `e3828e6`, library `8c7d6a2`), and `off`/`hwk` against the Python PS. The
+    first live run surfaced a cold-cache race in the library's `CachingJwksFetcher`
+    (concurrent callers refused by its rate limit instead of waiting); `AAuthHttp`
+    serializes fetches, and the race was reported to the library.
 
 - 2026-08-07 — **Adopt aauth-java-library 0.2.3 (AAuth draft-10)**: 0.2.x signs with
   fully-specified `alg: Ed25519` (RFC 9864) and adds the agent-token `ps` claim. The
