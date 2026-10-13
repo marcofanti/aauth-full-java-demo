@@ -33,3 +33,10 @@ maa.uma.lab {
 	import uma_tls
 	reverse_proxy 127.0.0.1:9998
 }
+
+# The draft-11 walkthrough's demo resource (demo/Draft11Walkthrough.java in
+# aauth-java-person-server).
+rs.uma.lab {
+	import uma_tls
+	reverse_proxy 127.0.0.1:9997
+}
